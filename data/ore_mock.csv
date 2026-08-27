@@ -1,0 +1,11 @@
+Risk Incident ID,Risk Title,Risk Description,Source of Register,Severity,Financial Impact,Date & Time of Creation,Potential Breach,Breach PIC,ORE Reportability,ORE PIC,ORE Case ID,Attachments
+RI-20260827-953640,Process failure resulting in operational impact,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,High,Medium,2026-07-28 04:25:04,,,,,,
+RI-20260827-59A1C6,Customer service disruption,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Medium,Low,2026-08-26 12:25:04,,,,,,
+RI-20260827-A55121,Operational procedure not followed,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,High,High,2026-08-21 16:25:04,,,,,,
+RI-20260827-D089D3,Processing error identified,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Low,Low,2026-08-11 23:25:04,,,,,,
+RI-20260827-D54AAC,Control weakness identified,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Low,Low,2026-08-24 02:25:04,,,,,,
+RI-20260827-775BD6,Operational incident requiring review,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Low,Medium,2026-08-14 00:25:04,,,,,,
+RI-20260827-866234,Incorrect processing identified,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Low,Medium,2026-07-31 07:25:04,,,,,,
+RI-20260827-622D7D,Manual process failure,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Medium,Medium,2026-08-11 01:25:04,,,,,,
+RI-20260827-4F05A7,Operational control exception,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Low,Medium,2026-07-27 16:25:04,,,,,,
+RI-20260827-5C36DC,Business process disruption,Mock incident generated for Operational Risk Events. This is sample data for testing the centralised risk incident register.,ORE,Medium,Low,2026-08-12 13:25:04,,,,,,
