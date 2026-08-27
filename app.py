@@ -3,7 +3,13 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 import uuid
+from google import genai
+import json
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ============================================================
 # PAGE CONFIG
@@ -199,7 +205,7 @@ def get_breach_pic_display(name):
     if name in BREACH_PIC_DIRECTORY:
 
         return (
-            f"{name} — "
+            f"{name} - "
             f"{BREACH_PIC_DIRECTORY[name]}"
         )
 
@@ -213,10 +219,10 @@ def get_breach_pic_name(display_value):
 
     display_value = str(display_value).strip()
 
-    if " — " in display_value:
+    if " - " in display_value:
 
         return display_value.split(
-            " — ",
+            " - ",
             1
         )[0].strip()
 
@@ -232,6 +238,88 @@ def get_breach_pic_email(name):
         str(name).strip(),
         ""
     )
+def get_ai_breach_assessment(risk_title, risk_description, source, severity):
+
+    prompt = f"""
+You are assisting a bank's operational risk team in triaging a risk incident.
+Analyze the incident below and respond in EXACTLY this plain text format,
+with each field on its own line, no markdown, no extra commentary:
+
+Breach: Yes or No
+Confidence: Low or Medium or High
+Reasoning: 1-2 sentence explanation
+Policies: short bullet-style list of relevant policy/regulation areas, or leave blank if none apply
+
+Incident details:
+- Source: {source}
+- Severity: {severity}
+- Title: {risk_title}
+- Description: {risk_description}
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=prompt
+        )
+        text = response.text.strip()
+
+        return parse_ai_assessment(text)
+
+    except Exception as e:
+        return {
+            "suggested_potential_breach": "No",
+            "confidence": "Low",
+            "reasoning": f"AI assessment unavailable: {e}",
+            "suggested_policies": ""
+        }
+
+def parse_ai_assessment(text):
+
+    result = {
+        "suggested_potential_breach": "No",
+        "confidence": "Low",
+        "reasoning": "",
+        "suggested_policies": ""
+    }
+
+    current_field = None
+    policy_lines = []
+
+    for line in text.splitlines():
+
+        stripped = line.strip()
+
+        if not stripped:
+            continue
+
+        lower = stripped.lower()
+
+        if lower.startswith("breach:"):
+            result["suggested_potential_breach"] = stripped.split(":", 1)[1].strip()
+            current_field = None
+
+        elif lower.startswith("confidence:"):
+            result["confidence"] = stripped.split(":", 1)[1].strip()
+            current_field = None
+
+        elif lower.startswith("reasoning:"):
+            result["reasoning"] = stripped.split(":", 1)[1].strip()
+            current_field = None
+
+        elif lower.startswith("policies:"):
+            first_line = stripped.split(":", 1)[1].strip()
+            if first_line:
+                policy_lines.append(first_line)
+            current_field = "policies"
+
+        elif current_field == "policies":
+            # Catches multi-line bullet lists that continue after "Policies:"
+            policy_lines.append(stripped)
+
+    result["suggested_policies"] = "\n".join(policy_lines)
+
+    return result
 
 # ============================================================
 # INCIDENT DETAIL POPUP
@@ -267,24 +355,24 @@ def show_incident_details(detail_row):
     col1, col2, col3 = st.columns(3)
 
     if source_type == "TCC":
-        col1.metric("System Affected", detail_row["TCC_System_Affected"] or "—")
-        col2.metric("Downtime (min)", detail_row["TCC_Downtime_Minutes"] or "—")
-        col3.metric("Impact Type", detail_row["TCC_Impact_Type"] or "—")
+        col1.metric("System Affected", detail_row["TCC_System_Affected"] or "-")
+        col2.metric("Downtime (min)", detail_row["TCC_Downtime_Minutes"] or "-")
+        col3.metric("Impact Type", detail_row["TCC_Impact_Type"] or "-")
 
     elif source_type == "SAAM":
-        col1.metric("Staff Name / ID", detail_row["SAAM_Staff_Name"] or "—")
-        col2.metric("Department", detail_row["SAAM_Department"] or "—")
-        col3.metric("Anomaly Type", detail_row["SAAM_Anomaly_Type"] or "—")
+        col1.metric("Staff Name / ID", detail_row["SAAM_Staff_Name"] or "-")
+        col2.metric("Department", detail_row["SAAM_Department"] or "-")
+        col3.metric("Anomaly Type", detail_row["SAAM_Anomaly_Type"] or "-")
 
     elif source_type == "DLM":
-        col1.metric("Data Type", detail_row["DLM_Data_Type"] or "—")
-        col2.metric("Destination / Channel", detail_row["DLM_Destination_Channel"] or "—")
-        col3.metric("Data Classification", detail_row["DLM_Data_Classification"] or "—")
+        col1.metric("Data Type", detail_row["DLM_Data_Type"] or "-")
+        col2.metric("Destination / Channel", detail_row["DLM_Destination_Channel"] or "-")
+        col3.metric("Data Classification", detail_row["DLM_Data_Classification"] or "-")
 
     elif source_type == "ORE":
-        col1.metric("Process Affected", detail_row["ORE_Process_Affected"] or "—")
-        col2.metric("Root Cause Category", detail_row["ORE_Root_Cause_Category"] or "—")
-        col3.metric("Business Unit", detail_row["ORE_Business_Unit"] or "—")
+        col1.metric("Process Affected", detail_row["ORE_Process_Affected"] or "-")
+        col2.metric("Root Cause Category", detail_row["ORE_Root_Cause_Category"] or "-")
+        col3.metric("Business Unit", detail_row["ORE_Business_Unit"] or "-")
 
     if detail_row["Attachments"]:
         st.markdown("---")
@@ -386,8 +474,8 @@ def generate_email_draft(
     # --------------------------------------------------------
 
     subject = (
-        f"Potential Breach Review Required – "
-        f"{incident_id} – {risk_title}"
+        f"Potential Breach Review Required - "
+        f"{incident_id} - {risk_title}"
     )
 
 
@@ -937,6 +1025,48 @@ if page == "Create Risk Incident":
         "Financial Impact *",
         FINANCIAL_OPTIONS
     )
+
+    # ========================================================
+    # AI BREACH ASSESSMENT (SUGGESTION ONLY)
+    # ========================================================
+
+    st.markdown(
+        """
+        <div class="section-header">
+            AI Breach Assessment (Suggestion)
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.caption(
+        "Optional: get an AI-generated first pass on whether this "
+        "incident may constitute a breach. This does not save "
+        "anything automatically - review and confirm manually."
+    )
+
+    if st.button("Get AI Suggestion", key="ai_suggest_create"):
+
+        if not risk_title.strip() or not risk_description.strip():
+            st.warning("Enter a Risk Title and Description first.")
+        else:
+            with st.spinner("Analyzing incident..."):
+                ai_result = get_ai_breach_assessment(
+                    risk_title, risk_description, source, severity
+                )
+
+            st.markdown(
+                f"""
+                <div class="breach-pic-box">
+                    <strong>Suggested Potential Breach:</strong> {ai_result['suggested_potential_breach']}
+                    &nbsp;|&nbsp; <strong>Confidence:</strong> {ai_result['confidence']}<br><br>
+                    <strong>Reasoning:</strong> {ai_result['reasoning']}<br><br>
+                    <strong>Possible relevant policies:</strong><br>
+                    {ai_result['suggested_policies'] or 'None suggested'}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
 
     # ========================================================
@@ -2062,6 +2192,20 @@ elif page == "Dashboard":
                         "relevant policies, regulations, procedures "
                         "or clauses that may have been breached."
                     )
+
+                    if st.button("Suggest policy text", key=f"ai_policy_{incident_id}"):
+                        with st.spinner("Analyzing..."):
+                            ai_result = get_ai_breach_assessment(
+                                risk_title, risk_description, source, severity
+                            )
+
+                        st.write(ai_result)
+
+                        if ai_result["suggested_policies"]:
+                            st.session_state[f"policy_{incident_id}"] = ai_result["suggested_policies"]
+                            st.rerun()
+                        else:
+                            st.info("No specific policy suggestion available.")
 
 
                     policies_breached = st.text_area(
