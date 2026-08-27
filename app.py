@@ -772,73 +772,30 @@ elif page == "Dashboard":
 
 
     with col1:
-
         st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-value">
-                    {total_incidents}
-                </div>
-
-                <div class="metric-label">
-                    Total Risk Incidents
-                </div>
-            </div>
-            """,
+            f'<div class="metric-card"><div class="metric-value">{total_incidents}</div>'
+            f'<div class="metric-label">Total Risk Incidents</div></div>',
             unsafe_allow_html=True
         )
-
 
     with col2:
-
         st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-value">
-                    {open_incidents}
-                </div>
-
-                <div class="metric-label">
-                    Open Incidents
-                </div>
-            </div>
-            """,
+            f'<div class="metric-card"><div class="metric-value">{open_incidents}</div>'
+            f'<div class="metric-label">Open Incidents</div></div>',
             unsafe_allow_html=True
         )
-
 
     with col3:
-
         st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-value">
-                    {potential_breaches}
-                </div>
-
-                <div class="metric-label">
-                    Potential Breaches
-                </div>
-            </div>
-            """,
+            f'<div class="metric-card"><div class="metric-value">{potential_breaches}</div>'
+            f'<div class="metric-label">Potential Breaches</div></div>',
             unsafe_allow_html=True
         )
 
-
     with col4:
-
         st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-value">
-                    {reportable_ore}
-                </div>
-
-                <div class="metric-label">
-                    Reportable ORE
-                </div>
-            </div>
-            """,
+            f'<div class="metric-card"><div class="metric-value">{reportable_ore}</div>'
+            f'<div class="metric-label">Reportable ORE</div></div>',
             unsafe_allow_html=True
         )
 
