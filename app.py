@@ -798,6 +798,7 @@ with st.sidebar:
     [
         "Dashboard",
         "Create Risk Incident",
+        "Breach & ORE Statistics"
     ]
 )
 
@@ -2401,3 +2402,157 @@ elif page == "Dashboard":
 
 
             st.rerun()
+
+# ============================================================
+# BREACH & ORE STATISTICS
+# ============================================================
+
+elif page == "Breach & ORE Statistics":
+
+    st.markdown(
+        """
+        <div class="section-header">
+            Potential Breach & ORE Reportability Statistics
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if len(df) == 0:
+
+        st.info("No risk incidents recorded yet.")
+
+    else:
+
+        # --------------------------------------------------
+        # PREP: parse creation datetime, flag Yes rows
+        # --------------------------------------------------
+
+        stats_df = df.copy()
+
+        stats_df["Created"] = pd.to_datetime(
+            stats_df["Date & Time of Creation"],
+            errors="coerce"
+        )
+
+        stats_df = stats_df.dropna(subset=["Created"])
+
+        stats_df["Breach_Yes"] = (
+            stats_df["Potential Breach"]
+            .astype(str).str.strip().str.lower() == "yes"
+        ).astype(int)
+
+        stats_df["ORE_Yes"] = (
+            stats_df["ORE Reportability"]
+            .astype(str).str.strip().str.lower() == "yes"
+        ).astype(int)
+
+        # --------------------------------------------------
+        # PERIOD SELECTOR
+        # --------------------------------------------------
+
+        period = st.radio(
+            "View by",
+            ["Day", "Week", "Month", "Year"],
+            horizontal=True
+        )
+
+        if period == "Day":
+            stats_df["Period"] = stats_df["Created"].dt.date
+
+        elif period == "Week":
+            stats_df["Period"] = (
+                stats_df["Created"].dt.to_period("W").apply(lambda p: p.start_time.date())
+            )
+
+        elif period == "Month":
+            stats_df["Period"] = (
+                stats_df["Created"].dt.to_period("M").astype(str)
+            )
+
+        else:  # Year
+            stats_df["Period"] = (
+                stats_df["Created"].dt.to_period("Y").astype(str)
+            )
+
+        # --------------------------------------------------
+        # AGGREGATE
+        # --------------------------------------------------
+
+        summary = (
+            stats_df
+            .groupby("Period")[["Breach_Yes", "ORE_Yes"]]
+            .sum()
+            .rename(columns={
+                "Breach_Yes": "Potential Breach = Yes",
+                "ORE_Yes": "ORE Reportability = Yes"
+            })
+            .sort_index()
+        )
+
+        # --------------------------------------------------
+        # KPI TOTALS (for the currently selected period range)
+        # --------------------------------------------------
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(
+                f"""
+                <div class="metric-card">
+                    <div class="metric-value">
+                        {int(summary["Potential Breach = Yes"].sum())}
+                    </div>
+                    <div class="metric-label">
+                        Total Potential Breaches
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with col2:
+            st.markdown(
+                f"""
+                <div class="metric-card">
+                    <div class="metric-value">
+                        {int(summary["ORE Reportability = Yes"].sum())}
+                    </div>
+                    <div class="metric-label">
+                        Total Reportable ORE
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )    
+
+            page = st.radio(
+                "Select module",
+                [
+                    "Dashboard",
+                    "Create Risk Incident",
+                    "Breach & ORE Statistics"
+                ]
+            )
+
+        st.markdown("---")
+
+        # --------------------------------------------------
+        # CHART
+        # --------------------------------------------------
+
+        st.subheader(f"Trend by {period}")
+
+        st.bar_chart(summary)
+
+        # --------------------------------------------------
+        # TABLE
+        # --------------------------------------------------
+
+        st.subheader("Detailed Breakdown")
+
+        st.dataframe(
+            summary,
+            use_container_width=True
+        )
+
