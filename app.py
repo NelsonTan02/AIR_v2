@@ -17,6 +17,12 @@ st.set_page_config(
 )
 
 
+if "view_table_reset" not in st.session_state:
+    st.session_state["view_table_reset"] = 0
+
+if "preserved_edits" not in st.session_state:
+    st.session_state["preserved_edits"] = None
+
 # ============================================================
 # OCBC COLOURS
 # ============================================================
@@ -48,6 +54,24 @@ DATA_FILE = DATA_FOLDER / "risk_incident_register.csv"
 # DATABASE COLUMNS
 # ============================================================
 
+# COLUMNS = [
+#     "Risk Incident ID",
+#     "Risk Title",
+#     "Risk Description",
+#     "Source of Register",
+#     "Severity",
+#     "Financial Impact",
+#     "Date & Time of Creation",
+#     "Status",
+#     "Potential Breach",
+#     "Breach PIC",
+#     "Policies / Regulations Breached",
+#     "ORE Reportability",
+#     "ORE PIC",
+#     "ORE Case ID",
+#     "Attachments"
+# ]
+
 COLUMNS = [
     "Risk Incident ID",
     "Risk Title",
@@ -56,6 +80,27 @@ COLUMNS = [
     "Severity",
     "Financial Impact",
     "Date & Time of Creation",
+
+    # TCC-specific
+    "TCC_System_Affected",
+    "TCC_Downtime_Minutes",
+    "TCC_Impact_Type",
+
+    # SAAM-specific
+    "SAAM_Staff_Name",
+    "SAAM_Department",
+    "SAAM_Anomaly_Type",
+
+    # DLM-specific
+    "DLM_Data_Type",
+    "DLM_Destination_Channel",
+    "DLM_Data_Classification",
+
+    # ORE-specific
+    "ORE_Process_Affected",
+    "ORE_Root_Cause_Category",
+    "ORE_Business_Unit",
+
     "Status",
     "Potential Breach",
     "Breach PIC",
@@ -101,6 +146,20 @@ YES_NO_OPTIONS = [
     "Yes",
     "No"
 ]
+
+TCC_SYSTEMS = ["Core Banking System", "Internet Banking", "Mobile App", "Payment Gateway", "Internal Email"]
+TCC_IMPACT_TYPES = ["Full Outage", "Degraded Performance", "Intermittent Failure"]
+
+SAAM_DEPARTMENTS = ["Retail Banking", "Treasury", "Operations", "IT", "Compliance"]
+SAAM_ANOMALY_TYPES = ["Unusual Login Time", "Excessive Access Attempts", "Privileged Access Misuse", "Unusual Transaction Pattern"]
+
+DLM_DATA_TYPES = ["Customer PII", "Account Numbers", "Internal Financial Data", "Credentials", "Confidential Documents"]
+DLM_CHANNELS = ["Email (External)", "USB Storage", "Cloud Upload", "Printing", "Messaging App"]
+DLM_CLASSIFICATIONS = ["Confidential", "Restricted", "Internal Use Only"]
+
+ORE_PROCESSES = ["Loan Processing", "Customer Onboarding", "Payment Reconciliation", "Card Issuance", "KYC Review"]
+ORE_ROOT_CAUSES = ["Human Error", "System Error", "Process Gap", "Third-Party Failure"]
+ORE_BUSINESS_UNITS = ["Consumer Banking", "Corporate Banking", "Treasury", "Operations"]
 
 
 # ============================================================
@@ -173,6 +232,69 @@ def get_breach_pic_email(name):
         str(name).strip(),
         ""
     )
+
+# ============================================================
+# INCIDENT DETAIL POPUP
+# ============================================================
+
+@st.dialog("Incident Details", width="large")
+def show_incident_details(detail_row):
+
+    incident_id = detail_row["Risk Incident ID"]
+    source_type = str(detail_row["Source of Register"]).strip()
+
+    st.markdown(
+        f"""
+        <div class="breach-pic-box">
+            <strong>Incident:</strong> {incident_id}<br>
+            <strong>Source:</strong> {source_type}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(f"**Risk Title:** {detail_row['Risk Title']}")
+    st.markdown(f"**Description:** {detail_row['Risk Description']}")
+
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f"**Severity:** {detail_row['Severity']}")
+    c2.markdown(f"**Financial Impact:** {detail_row['Financial Impact']}")
+    c3.markdown(f"**Created:** {detail_row['Date & Time of Creation']}")
+
+    st.markdown("---")
+    st.markdown(f"**{source_type} Specific Details**")
+
+    col1, col2, col3 = st.columns(3)
+
+    if source_type == "TCC":
+        col1.metric("System Affected", detail_row["TCC_System_Affected"] or "—")
+        col2.metric("Downtime (min)", detail_row["TCC_Downtime_Minutes"] or "—")
+        col3.metric("Impact Type", detail_row["TCC_Impact_Type"] or "—")
+
+    elif source_type == "SAAM":
+        col1.metric("Staff Name / ID", detail_row["SAAM_Staff_Name"] or "—")
+        col2.metric("Department", detail_row["SAAM_Department"] or "—")
+        col3.metric("Anomaly Type", detail_row["SAAM_Anomaly_Type"] or "—")
+
+    elif source_type == "DLM":
+        col1.metric("Data Type", detail_row["DLM_Data_Type"] or "—")
+        col2.metric("Destination / Channel", detail_row["DLM_Destination_Channel"] or "—")
+        col3.metric("Data Classification", detail_row["DLM_Data_Classification"] or "—")
+
+    elif source_type == "ORE":
+        col1.metric("Process Affected", detail_row["ORE_Process_Affected"] or "—")
+        col2.metric("Root Cause Category", detail_row["ORE_Root_Cause_Category"] or "—")
+        col3.metric("Business Unit", detail_row["ORE_Business_Unit"] or "—")
+
+    if detail_row["Attachments"]:
+        st.markdown("---")
+        st.caption(f"📎 Attachments: {detail_row['Attachments']}")
+
+    st.markdown("---")
+
+    if st.button("Close", use_container_width=True):
+        st.session_state["view_table_reset"] += 1
+        st.rerun()
 
 
 # ============================================================
@@ -672,12 +794,12 @@ with st.sidebar:
     )
 
     page = st.radio(
-        "Select module",
-        [
-            "Dashboard",
-            "Create Risk Incident"
-        ]
-    )
+    "Select module",
+    [
+        "Dashboard",
+        "Create Risk Incident",
+    ]
+)
 
     st.markdown("---")
 
@@ -799,19 +921,16 @@ if page == "Create Risk Incident":
     col1, col2 = st.columns(2)
 
     with col1:
-
         source = st.selectbox(
             "Source of Register *",
             SOURCE_OPTIONS
         )
 
     with col2:
-
         severity = st.selectbox(
             "Severity *",
             SEVERITY_OPTIONS
         )
-
 
     financial_impact = st.selectbox(
         "Financial Impact *",
@@ -1442,22 +1561,74 @@ elif page == "Dashboard":
 
 
         # ====================================================
+        # SLIM TABLE FOR EDITOR (hide source-specific fields)
+        # ====================================================
+
+        SOURCE_SPECIFIC_COLUMNS = [
+            "TCC_System_Affected",
+            "TCC_Downtime_Minutes",
+            "TCC_Impact_Type",
+
+            "SAAM_Staff_Name",
+            "SAAM_Department",
+            "SAAM_Anomaly_Type",
+
+            "DLM_Data_Type",
+            "DLM_Destination_Channel",
+            "DLM_Data_Classification",
+
+            "ORE_Process_Affected",
+            "ORE_Root_Cause_Category",
+            "ORE_Business_Unit"
+        ]
+        editor_display_df = recent_df.drop(
+            columns=SOURCE_SPECIFIC_COLUMNS
+        ).reset_index(drop=True)
+
+        editor_display_df.insert(0, "🔍 View", False)
+
+        # ----------------------------------------------------
+        # RE-APPLY ANY UNSAVED EDITS FROM BEFORE THE RESET
+        # ----------------------------------------------------
+
+        EDITABLE_COLS = [
+            "Status", "Potential Breach", "Breach PIC",
+            "Policies / Regulations Breached",
+            "ORE Reportability", "ORE PIC", "ORE Case ID"
+        ]
+
+        if st.session_state["preserved_edits"]:
+
+            preserved_lookup = {
+                row["Risk Incident ID"]: row
+                for row in st.session_state["preserved_edits"]
+            }
+
+            for i, row in editor_display_df.iterrows():
+
+                incident_id = row["Risk Incident ID"]
+
+                if incident_id in preserved_lookup:
+
+                    for col in EDITABLE_COLS:
+                        editor_display_df.at[i, col] = preserved_lookup[incident_id][col]
+
+                    # NOTE: "🔍 View" intentionally NOT restored — stays False
+
+
+        # ====================================================
         # EDITABLE DATA EDITOR
         # ====================================================
 
         edited_df = st.data_editor(
 
-            recent_df,
+            editor_display_df,
 
             use_container_width=True,
-
             hide_index=True,
-
             num_rows="fixed",
-
             height=500,
-
-            key="risk_incident_editor",
+            key=f"risk_incident_editor_{st.session_state['view_table_reset']}",
 
             disabled=[
                 "Risk Incident ID",
@@ -1470,8 +1641,15 @@ elif page == "Dashboard":
                 "Policies / Regulations Breached",
                 "Attachments"
             ],
-
             column_config={
+
+                "🔍 View":
+                    st.column_config.CheckboxColumn(
+                        "🔍 View",
+                        help="Tick to view source-specific details",
+                        default=False,
+                        width="small"
+                    ),
 
                 # --------------------------------------------
                 # LOCKED FIELDS
@@ -1628,6 +1806,29 @@ elif page == "Dashboard":
             }
         )
 
+        # ----------------------------------------------------
+        # ALWAYS SAVE THE LATEST STATE, IN CASE OF A RESET
+        # ----------------------------------------------------
+
+        st.session_state["preserved_edits"] = edited_df.to_dict("records")
+        
+
+      # ====================================================
+        # TRIGGER POPUP FOR CHECKED ROW
+        # ====================================================
+
+        checked_rows = edited_df[edited_df["🔍 View"] == True]
+
+        if len(checked_rows) > 0:
+
+            # Only pop up for the first checked row per rerun
+            selected_incident_id = checked_rows.iloc[0]["Risk Incident ID"]
+
+            detail_row = recent_df[
+                recent_df["Risk Incident ID"] == selected_incident_id
+            ].iloc[0]
+
+            show_incident_details(detail_row)
 
         # ====================================================
         # BREACH PIC ASSIGNMENT
