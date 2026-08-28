@@ -4,12 +4,23 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 from google import genai
-import json
 import os
 from dotenv import load_dotenv
 
+
+# ============================================================
+# GEMINI CONFIGURATION
+# ============================================================
+
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if GEMINI_API_KEY:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+else:
+    client = None
+
 
 # ============================================================
 # PAGE CONFIG
@@ -23,11 +34,22 @@ st.set_page_config(
 )
 
 
+# ============================================================
+# SESSION STATE
+# ============================================================
+
 if "view_table_reset" not in st.session_state:
     st.session_state["view_table_reset"] = 0
 
 if "preserved_edits" not in st.session_state:
     st.session_state["preserved_edits"] = None
+
+if "ore_email_drafts" not in st.session_state:
+    st.session_state["ore_email_drafts"] = {}
+
+if "ai_breach_result" not in st.session_state:
+    st.session_state["ai_breach_result"] = None
+
 
 # ============================================================
 # OCBC COLOURS
@@ -60,24 +82,6 @@ DATA_FILE = DATA_FOLDER / "risk_incident_register.csv"
 # DATABASE COLUMNS
 # ============================================================
 
-# COLUMNS = [
-#     "Risk Incident ID",
-#     "Risk Title",
-#     "Risk Description",
-#     "Source of Register",
-#     "Severity",
-#     "Financial Impact",
-#     "Date & Time of Creation",
-#     "Status",
-#     "Potential Breach",
-#     "Breach PIC",
-#     "Policies / Regulations Breached",
-#     "ORE Reportability",
-#     "ORE PIC",
-#     "ORE Case ID",
-#     "Attachments"
-# ]
-
 COLUMNS = [
     "Risk Incident ID",
     "Risk Title",
@@ -87,33 +91,57 @@ COLUMNS = [
     "Financial Impact",
     "Date & Time of Creation",
 
-    # TCC-specific
+    # --------------------------------------------------------
+    # TCC
+    # --------------------------------------------------------
+
     "TCC_System_Affected",
     "TCC_Downtime_Minutes",
     "TCC_Impact_Type",
 
-    # SAAM-specific
+    # --------------------------------------------------------
+    # SAAM
+    # --------------------------------------------------------
+
     "SAAM_Staff_Name",
     "SAAM_Department",
     "SAAM_Anomaly_Type",
 
-    # DLM-specific
+    # --------------------------------------------------------
+    # DLM
+    # --------------------------------------------------------
+
     "DLM_Data_Type",
     "DLM_Destination_Channel",
     "DLM_Data_Classification",
 
-    # ORE-specific
+    # --------------------------------------------------------
+    # ORE
+    # --------------------------------------------------------
+
     "ORE_Process_Affected",
-    "ORE_Root_Cause_Category",
-    "ORE_Business_Unit",
+
+    # --------------------------------------------------------
+    # GENERAL ASSESSMENT
+    # --------------------------------------------------------
 
     "Status",
     "Potential Breach",
     "Breach PIC",
     "Policies / Regulations Breached",
+
+    # --------------------------------------------------------
+    # ORE ASSESSMENT
+    # --------------------------------------------------------
+
     "ORE Reportability",
     "ORE PIC",
     "ORE Case ID",
+
+    # --------------------------------------------------------
+    # ATTACHMENTS
+    # --------------------------------------------------------
+
     "Attachments"
 ]
 
@@ -153,23 +181,92 @@ YES_NO_OPTIONS = [
     "No"
 ]
 
-TCC_SYSTEMS = ["Core Banking System", "Internet Banking", "Mobile App", "Payment Gateway", "Internal Email"]
-TCC_IMPACT_TYPES = ["Full Outage", "Degraded Performance", "Intermittent Failure"]
 
-SAAM_DEPARTMENTS = ["Retail Banking", "Treasury", "Operations", "IT", "Compliance"]
-SAAM_ANOMALY_TYPES = ["Unusual Login Time", "Excessive Access Attempts", "Privileged Access Misuse", "Unusual Transaction Pattern"]
+# ============================================================
+# TCC OPTIONS
+# ============================================================
 
-DLM_DATA_TYPES = ["Customer PII", "Account Numbers", "Internal Financial Data", "Credentials", "Confidential Documents"]
-DLM_CHANNELS = ["Email (External)", "USB Storage", "Cloud Upload", "Printing", "Messaging App"]
-DLM_CLASSIFICATIONS = ["Confidential", "Restricted", "Internal Use Only"]
+TCC_SYSTEMS = [
+    "Core Banking System",
+    "Internet Banking",
+    "Mobile App",
+    "Payment Gateway",
+    "Internal Email"
+]
 
-ORE_PROCESSES = ["Loan Processing", "Customer Onboarding", "Payment Reconciliation", "Card Issuance", "KYC Review"]
-ORE_ROOT_CAUSES = ["Human Error", "System Error", "Process Gap", "Third-Party Failure"]
-ORE_BUSINESS_UNITS = ["Consumer Banking", "Corporate Banking", "Treasury", "Operations"]
+TCC_IMPACT_TYPES = [
+    "Full Outage",
+    "Degraded Performance",
+    "Intermittent Failure"
+]
 
 
 # ============================================================
-# HARD-CODED BREACH PIC DIRECTORY
+# SAAM OPTIONS
+# ============================================================
+
+SAAM_DEPARTMENTS = [
+    "Retail Banking",
+    "Treasury",
+    "Operations",
+    "IT",
+    "Compliance"
+]
+
+SAAM_ANOMALY_TYPES = [
+    "Unusual Login Time",
+    "Excessive Access Attempts",
+    "Privileged Access Misuse",
+    "Unusual Transaction Pattern"
+]
+
+
+# ============================================================
+# DLM OPTIONS
+# ============================================================
+
+DLM_DATA_TYPES = [
+    "Customer PII",
+    "Account Numbers",
+    "Internal Financial Data",
+    "Credentials",
+    "Confidential Documents"
+]
+
+DLM_CHANNELS = [
+    "Email (External)",
+    "USB Storage",
+    "Cloud Upload",
+    "Printing",
+    "Messaging App"
+]
+
+DLM_CLASSIFICATIONS = [
+    "Confidential",
+    "Restricted",
+    "Internal Use Only"
+]
+
+
+# ============================================================
+# ORE OPTIONS
+# ============================================================
+
+ORE_PROCESS_OPTIONS = [
+    "Customer Onboarding",
+    "Account Management",
+    "Payments",
+    "Treasury Operations",
+    "Technology Operations",
+    "Data Management",
+    "Regulatory Reporting",
+    "Financial Operations",
+    "Other"
+]
+
+
+# ============================================================
+# BREACH PIC DIRECTORY
 # ============================================================
 
 BREACH_PIC_DIRECTORY = {
@@ -182,12 +279,26 @@ BREACH_PIC_DIRECTORY = {
 
 
 # ============================================================
-# BREACH PIC DROPDOWN DISPLAY
+# ORE PIC DIRECTORY
 # ============================================================
+
+ORE_PIC_DIRECTORY = {
+    "Farah Ahmad": "farah.ahmad@example.com",
+    "George Lim": "george.lim@example.com",
+    "Hannah Wong": "hannah.wong@example.com",
+    "Ivan Tan": "ivan.tan@example.com",
+    "Jennifer Lee": "jennifer.lee@example.com"
+}
+
 
 BREACH_PIC_OPTIONS = [
     f"{name} — {email}"
     for name, email in BREACH_PIC_DIRECTORY.items()
+]
+
+ORE_PIC_OPTIONS = [
+    f"{name} — {email}"
+    for name, email in ORE_PIC_DIRECTORY.items()
 ]
 
 
@@ -195,84 +306,208 @@ BREACH_PIC_OPTIONS = [
 # HELPER FUNCTIONS
 # ============================================================
 
+def clean_value(value):
+    """
+    Safely convert any value to a clean string.
+
+    This is particularly important for Streamlit's data editor
+    because blank cells can sometimes become NaN/float values.
+    """
+
+    if value is None:
+        return ""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    return str(value).strip()
+
+
+def force_string_columns(dataframe, columns=None):
+    """
+    Force selected columns to contain only Python strings.
+
+    This prevents Streamlit data_editor from interpreting an
+    entirely blank column as FLOAT and then rejecting a
+    SelectboxColumn/TextColumn configuration.
+    """
+
+    df_copy = dataframe.copy()
+
+    target_columns = columns or df_copy.columns.tolist()
+
+    for column in target_columns:
+
+        if column not in df_copy.columns:
+            df_copy[column] = ""
+
+        df_copy[column] = (
+            df_copy[column]
+            .map(clean_value)
+            .astype("object")
+        )
+
+    return df_copy
+
+
+# ============================================================
+# PIC HELPERS
+# ============================================================
+
 def get_breach_pic_display(name):
+
+    name = clean_value(name)
 
     if not name:
         return ""
 
-    name = str(name).strip()
-
     if name in BREACH_PIC_DIRECTORY:
-
-        return (
-            f"{name} - "
-            f"{BREACH_PIC_DIRECTORY[name]}"
-        )
+        return f"{name} — {BREACH_PIC_DIRECTORY[name]}"
 
     return name
 
 
 def get_breach_pic_name(display_value):
 
+    display_value = clean_value(display_value)
+
     if not display_value:
         return ""
 
-    display_value = str(display_value).strip()
+    if " — " in display_value:
+        return display_value.split(" — ", 1)[0].strip()
 
     if " - " in display_value:
-
-        return display_value.split(
-            " - ",
-            1
-        )[0].strip()
+        return display_value.split(" - ", 1)[0].strip()
 
     return display_value
 
 
 def get_breach_pic_email(name):
 
+    return BREACH_PIC_DIRECTORY.get(
+        clean_value(name),
+        ""
+    )
+
+
+def get_ore_pic_display(name):
+
+    name = clean_value(name)
+
     if not name:
         return ""
 
-    return BREACH_PIC_DIRECTORY.get(
-        str(name).strip(),
+    if name in ORE_PIC_DIRECTORY:
+        return f"{name} — {ORE_PIC_DIRECTORY[name]}"
+
+    return name
+
+
+def get_ore_pic_name(display_value):
+
+    display_value = clean_value(display_value)
+
+    if not display_value:
+        return ""
+
+    if " — " in display_value:
+        return display_value.split(" — ", 1)[0].strip()
+
+    if " - " in display_value:
+        return display_value.split(" - ", 1)[0].strip()
+
+    return display_value
+
+
+def get_ore_pic_email(name):
+
+    return ORE_PIC_DIRECTORY.get(
+        clean_value(name),
         ""
     )
-def get_ai_breach_assessment(risk_title, risk_description, source, severity):
+
+
+# ============================================================
+# AI BREACH ASSESSMENT
+# ============================================================
+
+def get_ai_breach_assessment(
+    risk_title,
+    risk_description,
+    source,
+    severity
+):
+
+    if client is None:
+
+        return {
+            "suggested_potential_breach": "No",
+            "confidence": "Low",
+            "reasoning": (
+                "Gemini API key is not configured."
+            ),
+            "suggested_policies": ""
+        }
 
     prompt = f"""
-You are assisting a bank's operational risk team in triaging a risk incident.
-Analyze the incident below and respond in EXACTLY this plain text format,
-with each field on its own line, no markdown, no extra commentary:
+You are assisting a bank's operational risk team
+in triaging a risk incident.
+
+Your role is to provide a preliminary recommendation only.
+The final breach determination must be made by the authorised
+human reviewer.
+
+Analyze the incident below.
+
+Respond in EXACTLY this plain text format:
 
 Breach: Yes or No
 Confidence: Low or Medium or High
 Reasoning: 1-2 sentence explanation
-Policies: short bullet-style list of relevant policy/regulation areas, or leave blank if none apply
+Policies: short list of potentially relevant policy,
+regulation, procedure, control or regulatory areas,
+or leave blank if none can reasonably be identified.
 
 Incident details:
-- Source: {source}
-- Severity: {severity}
-- Title: {risk_title}
-- Description: {risk_description}
+
+Source: {source}
+Severity: {severity}
+Title: {risk_title}
+Description: {risk_description}
 """
 
     try:
+
         response = client.models.generate_content(
             model="gemini-3.6-flash",
             contents=prompt
         )
-        text = response.text.strip()
 
-        return parse_ai_assessment(text)
+        response_text = clean_value(
+            getattr(response, "text", "")
+        )
+
+        return parse_ai_assessment(response_text)
 
     except Exception as e:
+
         return {
             "suggested_potential_breach": "No",
             "confidence": "Low",
-            "reasoning": f"AI assessment unavailable: {e}",
+            "reasoning": (
+                f"AI assessment unavailable: {e}"
+            ),
             "suggested_policies": ""
         }
+
+
+# ============================================================
+# PARSE AI ASSESSMENT
+# ============================================================
 
 def parse_ai_assessment(text):
 
@@ -286,7 +521,7 @@ def parse_ai_assessment(text):
     current_field = None
     policy_lines = []
 
-    for line in text.splitlines():
+    for line in clean_value(text).splitlines():
 
         stripped = line.strip()
 
@@ -296,100 +531,94 @@ def parse_ai_assessment(text):
         lower = stripped.lower()
 
         if lower.startswith("breach:"):
-            result["suggested_potential_breach"] = stripped.split(":", 1)[1].strip()
+
+            value = stripped.split(
+                ":",
+                1
+            )[1].strip()
+
+            if value.lower() in ["yes", "no"]:
+
+                result[
+                    "suggested_potential_breach"
+                ] = value
+
             current_field = None
 
         elif lower.startswith("confidence:"):
-            result["confidence"] = stripped.split(":", 1)[1].strip()
+
+            value = stripped.split(
+                ":",
+                1
+            )[1].strip()
+
+            if value:
+
+                result[
+                    "confidence"
+                ] = value
+
             current_field = None
 
         elif lower.startswith("reasoning:"):
-            result["reasoning"] = stripped.split(":", 1)[1].strip()
+
+            result[
+                "reasoning"
+            ] = stripped.split(
+                ":",
+                1
+            )[1].strip()
+
             current_field = None
 
         elif lower.startswith("policies:"):
-            first_line = stripped.split(":", 1)[1].strip()
+
+            first_line = stripped.split(
+                ":",
+                1
+            )[1].strip()
+
             if first_line:
                 policy_lines.append(first_line)
+
             current_field = "policies"
 
         elif current_field == "policies":
-            # Catches multi-line bullet lists that continue after "Policies:"
+
             policy_lines.append(stripped)
 
-    result["suggested_policies"] = "\n".join(policy_lines)
+    result[
+        "suggested_policies"
+    ] = "\n".join(policy_lines)
 
     return result
 
-# ============================================================
-# INCIDENT DETAIL POPUP
-# ============================================================
 
-@st.dialog("Incident Details", width="large")
-def show_incident_details(detail_row):
+def get_ai_policy_suggestion(
+    risk_title,
+    risk_description,
+    source,
+    severity
+):
 
-    incident_id = detail_row["Risk Incident ID"]
-    source_type = str(detail_row["Source of Register"]).strip()
-
-    st.markdown(
-        f"""
-        <div class="breach-pic-box">
-            <strong>Incident:</strong> {incident_id}<br>
-            <strong>Source:</strong> {source_type}
-        </div>
-        """,
-        unsafe_allow_html=True
+    result = get_ai_breach_assessment(
+        risk_title,
+        risk_description,
+        source,
+        severity
     )
 
-    st.markdown(f"**Risk Title:** {detail_row['Risk Title']}")
-    st.markdown(f"**Description:** {detail_row['Risk Description']}")
-
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f"**Severity:** {detail_row['Severity']}")
-    c2.markdown(f"**Financial Impact:** {detail_row['Financial Impact']}")
-    c3.markdown(f"**Created:** {detail_row['Date & Time of Creation']}")
-
-    st.markdown("---")
-    st.markdown(f"**{source_type} Specific Details**")
-
-    col1, col2, col3 = st.columns(3)
-
-    if source_type == "TCC":
-        col1.metric("System Affected", detail_row["TCC_System_Affected"] or "-")
-        col2.metric("Downtime (min)", detail_row["TCC_Downtime_Minutes"] or "-")
-        col3.metric("Impact Type", detail_row["TCC_Impact_Type"] or "-")
-
-    elif source_type == "SAAM":
-        col1.metric("Staff Name / ID", detail_row["SAAM_Staff_Name"] or "-")
-        col2.metric("Department", detail_row["SAAM_Department"] or "-")
-        col3.metric("Anomaly Type", detail_row["SAAM_Anomaly_Type"] or "-")
-
-    elif source_type == "DLM":
-        col1.metric("Data Type", detail_row["DLM_Data_Type"] or "-")
-        col2.metric("Destination / Channel", detail_row["DLM_Destination_Channel"] or "-")
-        col3.metric("Data Classification", detail_row["DLM_Data_Classification"] or "-")
-
-    elif source_type == "ORE":
-        col1.metric("Process Affected", detail_row["ORE_Process_Affected"] or "-")
-        col2.metric("Root Cause Category", detail_row["ORE_Root_Cause_Category"] or "-")
-        col3.metric("Business Unit", detail_row["ORE_Business_Unit"] or "-")
-
-    if detail_row["Attachments"]:
-        st.markdown("---")
-        st.caption(f"📎 Attachments: {detail_row['Attachments']}")
-
-    st.markdown("---")
-
-    if st.button("Close", use_container_width=True):
-        st.session_state["view_table_reset"] += 1
-        st.rerun()
+    return result.get(
+        "suggested_policies",
+        ""
+    )
 
 
 # ============================================================
-# EMAIL DRAFT GENERATOR
+# ORE EMAIL DRAFT GENERATOR
 # ============================================================
 
-def generate_email_draft(
+def generate_ore_email_draft(
     incident_id,
     risk_title,
     risk_description,
@@ -397,107 +626,63 @@ def generate_email_draft(
     severity,
     financial_impact,
     potential_breach,
-    breach_pic_name,
-    breach_pic_email,
-    policies_breached,
-    attachments
+    ore_process_affected,
+    attachments,
+    ore_pic_name,
+    ore_pic_email
 ):
 
-    # --------------------------------------------------------
-    # ATTACHMENT SECTION
-    # --------------------------------------------------------
+    incident_id = clean_value(incident_id)
+    risk_title = clean_value(risk_title)
+    risk_description = clean_value(risk_description)
+    source = clean_value(source)
+    severity = clean_value(severity)
+    financial_impact = clean_value(financial_impact)
+    potential_breach = (
+        clean_value(potential_breach)
+        or "Not Assessed"
+    )
+    ore_process_affected = clean_value(
+        ore_process_affected
+    )
+    attachments = clean_value(attachments)
+    ore_pic_name = clean_value(ore_pic_name)
+    ore_pic_email = clean_value(ore_pic_email)
 
-    if attachments:
+    recipient_name = (
+        ore_pic_name
+        or "[ORE PIC]"
+    )
 
-        attachment_list = [
-            item.strip()
-            for item in str(attachments).split(";")
-            if item.strip()
-        ]
-
-        if attachment_list:
-
-            attachment_text = "\n".join(
-                f"• {item}"
-                for item in attachment_list
-            )
-
-        else:
-
-            attachment_text = "No attachments recorded."
-
-    else:
-
-        attachment_text = "No attachments recorded."
-
-
-    # --------------------------------------------------------
-    # POLICY SECTION
-    # --------------------------------------------------------
-
-    if policies_breached.strip():
-
-        policy_text = policies_breached.strip()
-
-    else:
-
-        policy_text = (
-            "[To be completed by the assigned "
-            "Breach PIC]"
-        )
-
-
-    # --------------------------------------------------------
-    # PIC
-    # --------------------------------------------------------
-
-    if breach_pic_name:
-
-        pic_name = breach_pic_name
-
-    else:
-
-        pic_name = "[Breach PIC to be assigned]"
-
-
-    if breach_pic_email:
-
-        pic_email = breach_pic_email
-
-    else:
-
-        pic_email = "[Email not available]"
-
-
-    # --------------------------------------------------------
-    # EMAIL SUBJECT
-    # --------------------------------------------------------
+    recipient_email = (
+        ore_pic_email
+        or "[ORE PIC email]"
+    )
 
     subject = (
-        f"Potential Breach Review Required - "
+        "ORE Case Creation Required - "
         f"{incident_id} - {risk_title}"
     )
 
+    attachment_text = (
+        attachments
+        or "No attachments recorded"
+    )
 
-    # --------------------------------------------------------
-    # EMAIL BODY
-    # --------------------------------------------------------
+    process_text = (
+        ore_process_affected
+        or "Not specified"
+    )
 
-    body = f"""To: {pic_name} <{pic_email}>
+    body = f"""To: {recipient_name} <{recipient_email}>
 
 Subject: {subject}
 
+Dear {recipient_name},
 
-Dear {pic_name},
+The following risk incident has been assessed as reportable to Operational Risk Events (ORE).
 
-A potential breach has been identified in the Central Risk Incident Register.
-
-Please review the incident details below and assess the applicable policies, regulations, procedures, or requirements that may have been breached.
-
-
-============================================================
-RISK INCIDENT DETAILS
-============================================================
+Please review the incident details below and create the corresponding ORE case in the bank's eGRC system.
 
 Risk Incident ID:
 {incident_id}
@@ -511,6 +696,9 @@ Risk Description:
 Source of Register:
 {source}
 
+Process Affected:
+{process_text}
+
 Severity:
 {severity}
 
@@ -520,33 +708,13 @@ Financial Impact:
 Potential Breach:
 {potential_breach}
 
-
-============================================================
-POLICIES / REGULATIONS BREACHED
-============================================================
-
-{policy_text}
-
-
-Please identify the relevant policy, regulation, procedure, guideline, or other applicable requirement that may have been breached.
-
-Where applicable, please include:
-
-• Policy / regulation name
-• Relevant section / clause
-• Description of the requirement
-• How the incident may have breached the requirement
-• Any further action or investigation required
-
-
-============================================================
-ATTACHMENTS
-============================================================
-
+Attachments:
 {attachment_text}
 
+ORE Action Required:
+Please create an ORE case for this incident in the bank's eGRC system and record the relevant incident details and supporting documentation.
 
-Please review the above incident and provide your assessment accordingly.
+Once the ORE case has been created, please update the Risk Incident Register with the eGRC ORE Case ID.
 
 Thank you.
 
@@ -554,8 +722,332 @@ Regards,
 Central Risk Incident Register
 """
 
-
     return subject, body
+
+
+# ============================================================
+# INCIDENT DETAIL POPUP
+# ============================================================
+
+@st.dialog("Incident Details", width="large")
+def show_incident_details(detail_row):
+
+    incident_id = clean_value(
+        detail_row.get(
+            "Risk Incident ID",
+            ""
+        )
+    )
+
+    source_type = clean_value(
+        detail_row.get(
+            "Source of Register",
+            ""
+        )
+    )
+
+    st.markdown(
+        f"""
+        <div class="breach-pic-box">
+            <strong>Incident:</strong> {incident_id}<br>
+            <strong>Source:</strong> {source_type}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"**Risk Title:** "
+        f"{clean_value(detail_row.get('Risk Title', ''))}"
+    )
+
+    st.markdown(
+        f"**Description:** "
+        f"{clean_value(detail_row.get('Risk Description', ''))}"
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.markdown(
+        f"**Severity:** "
+        f"{clean_value(detail_row.get('Severity', ''))}"
+    )
+
+    col2.markdown(
+        f"**Financial Impact:** "
+        f"{clean_value(detail_row.get('Financial Impact', ''))}"
+    )
+
+    col3.markdown(
+        f"**Created:** "
+        f"{clean_value(detail_row.get('Date & Time of Creation', ''))}"
+    )
+
+    # ========================================================
+    # TCC / SAAM / DLM
+    # ========================================================
+
+    if source_type in [
+        "TCC",
+        "SAAM",
+        "DLM"
+    ]:
+
+        st.markdown("---")
+
+        st.markdown(
+            f"**{source_type} Specific Details**"
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        if source_type == "TCC":
+
+            col1.metric(
+                "System Affected",
+                clean_value(
+                    detail_row.get(
+                        "TCC_System_Affected",
+                        ""
+                    )
+                ) or "-"
+            )
+
+            col2.metric(
+                "Downtime (min)",
+                clean_value(
+                    detail_row.get(
+                        "TCC_Downtime_Minutes",
+                        ""
+                    )
+                ) or "-"
+            )
+
+            col3.metric(
+                "Impact Type",
+                clean_value(
+                    detail_row.get(
+                        "TCC_Impact_Type",
+                        ""
+                    )
+                ) or "-"
+            )
+
+        elif source_type == "SAAM":
+
+            col1.metric(
+                "Staff Name / ID",
+                clean_value(
+                    detail_row.get(
+                        "SAAM_Staff_Name",
+                        ""
+                    )
+                ) or "-"
+            )
+
+            col2.metric(
+                "Department",
+                clean_value(
+                    detail_row.get(
+                        "SAAM_Department",
+                        ""
+                    )
+                ) or "-"
+            )
+
+            col3.metric(
+                "Anomaly Type",
+                clean_value(
+                    detail_row.get(
+                        "SAAM_Anomaly_Type",
+                        ""
+                    )
+                ) or "-"
+            )
+
+        elif source_type == "DLM":
+
+            col1.metric(
+                "Data Type",
+                clean_value(
+                    detail_row.get(
+                        "DLM_Data_Type",
+                        ""
+                    )
+                ) or "-"
+            )
+
+            col2.metric(
+                "Destination / Channel",
+                clean_value(
+                    detail_row.get(
+                        "DLM_Destination_Channel",
+                        ""
+                    )
+                ) or "-"
+            )
+
+            col3.metric(
+                "Data Classification",
+                clean_value(
+                    detail_row.get(
+                        "DLM_Data_Classification",
+                        ""
+                    )
+                ) or "-"
+            )
+
+    # ========================================================
+    # ORE DETAILS
+    # ========================================================
+
+    if source_type == "ORE":
+
+        st.markdown("---")
+        st.markdown("**ORE Incident Details**")
+
+        st.metric(
+            "Process Affected",
+            clean_value(
+                detail_row.get(
+                    "ORE_Process_Affected",
+                    ""
+                )
+            ) or "-"
+        )
+
+    # ========================================================
+    # ORE ASSESSMENT
+    # ========================================================
+
+    st.markdown("---")
+    st.markdown("**ORE Assessment**")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "ORE Reportability",
+        clean_value(
+            detail_row.get(
+                "ORE Reportability",
+                ""
+            )
+        ) or "Not Assessed"
+    )
+
+    ore_pic_name = clean_value(
+        detail_row.get(
+            "ORE PIC",
+            ""
+        )
+    )
+
+    ore_pic_email = get_ore_pic_email(
+        ore_pic_name
+    )
+
+    col2.metric(
+        "ORE PIC",
+        ore_pic_name or "-"
+    )
+
+    col3.metric(
+        "ORE Case ID",
+        clean_value(
+            detail_row.get(
+                "ORE Case ID",
+                ""
+            )
+        ) or "-"
+    )
+
+    if ore_pic_email:
+
+        st.caption(
+            f"ORE PIC Email: {ore_pic_email}"
+        )
+
+    # ========================================================
+    # ASSESSMENT
+    # ========================================================
+
+    st.markdown("---")
+    st.markdown("**Assessment Information**")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Potential Breach",
+        clean_value(
+            detail_row.get(
+                "Potential Breach",
+                ""
+            )
+        ) or "Not Assessed"
+    )
+
+    col2.metric(
+        "Breach PIC",
+        clean_value(
+            detail_row.get(
+                "Breach PIC",
+                ""
+            )
+        ) or "-"
+    )
+
+    col3.metric(
+        "Status",
+        clean_value(
+            detail_row.get(
+                "Status",
+                ""
+            )
+        ) or "-"
+    )
+
+    policies = clean_value(
+        detail_row.get(
+            "Policies / Regulations Breached",
+            ""
+        )
+    )
+
+    if policies:
+
+        st.markdown(
+            "**Policies / Regulations Breached**"
+        )
+
+        st.text(policies)
+
+    attachments = clean_value(
+        detail_row.get(
+            "Attachments",
+            ""
+        )
+    )
+
+    if attachments:
+
+        st.markdown("---")
+
+        st.caption(
+            f"📎 Attachments: {attachments}"
+        )
+
+    st.markdown("---")
+
+    if st.button(
+        "Close",
+        use_container_width=True
+    ):
+
+        st.session_state[
+            "view_table_reset"
+        ] += 1
+
+        st.rerun()
 
 
 # ============================================================
@@ -575,11 +1067,6 @@ st.markdown(
     padding-bottom: 3rem;
     max-width: 100%;
 }}
-
-
-/* ============================================================
-   MAIN HEADER
-   ============================================================ */
 
 .main-header {{
     background-color: {OCBC_RED};
@@ -601,11 +1088,6 @@ st.markdown(
     font-size: 15px;
 }}
 
-
-/* ============================================================
-   SECTION HEADER
-   ============================================================ */
-
 .section-header {{
     background-color: {OCBC_RED};
     color: white;
@@ -616,11 +1098,6 @@ st.markdown(
     margin-top: 20px;
     margin-bottom: 18px;
 }}
-
-
-/* ============================================================
-   KPI CARDS
-   ============================================================ */
 
 .metric-card {{
     background-color: {LIGHT_GREY};
@@ -643,11 +1120,6 @@ st.markdown(
     margin-top: 5px;
 }}
 
-
-/* ============================================================
-   INFO BOX
-   ============================================================ */
-
 .info-box {{
     background-color: #EAF2FF;
     padding: 15px 18px;
@@ -655,11 +1127,6 @@ st.markdown(
     color: {BLUE};
     margin-bottom: 20px;
 }}
-
-
-/* ============================================================
-   EDIT NOTE
-   ============================================================ */
 
 .edit-note {{
     background-color: {OCBC_LIGHT_RED};
@@ -670,11 +1137,6 @@ st.markdown(
     color: {DARK_GREY};
 }}
 
-
-/* ============================================================
-   BREACH PIC BOX
-   ============================================================ */
-
 .breach-pic-box {{
     background-color: {OCBC_LIGHT_RED};
     border-left: 5px solid {OCBC_RED};
@@ -683,11 +1145,6 @@ st.markdown(
     margin-top: 10px;
     margin-bottom: 20px;
 }}
-
-
-/* ============================================================
-   EMAIL DRAFT BOX
-   ============================================================ */
 
 .email-draft-box {{
     background-color: #F8F9FA;
@@ -706,11 +1163,6 @@ st.markdown(
     margin-bottom: 8px;
 }}
 
-
-/* ============================================================
-   BUTTON
-   ============================================================ */
-
 .stButton > button {{
     background-color: {OCBC_RED};
     color: white;
@@ -724,19 +1176,9 @@ st.markdown(
     color: white;
 }}
 
-
-/* ============================================================
-   SIDEBAR
-   ============================================================ */
-
 section[data-testid="stSidebar"] {{
     background-color: {LIGHT_GREY};
 }}
-
-
-/* ============================================================
-   DATA EDITOR
-   ============================================================ */
 
 [data-testid="stDataEditor"] {{
     border: 1px solid #DDDDDD;
@@ -766,7 +1208,8 @@ def load_data():
         df = pd.read_csv(
             DATA_FILE,
             dtype=str,
-            keep_default_na=False
+            keep_default_na=False,
+            na_filter=False
         )
 
     except Exception as e:
@@ -779,26 +1222,30 @@ def load_data():
             columns=COLUMNS
         )
 
-    # Make sure all columns exist
+    # --------------------------------------------------------
+    # Add missing columns
+    # --------------------------------------------------------
+
     for column in COLUMNS:
 
         if column not in df.columns:
 
             df[column] = ""
 
-    # Correct column order
+    # --------------------------------------------------------
+    # Keep only expected columns and correct order
+    # --------------------------------------------------------
+
     df = df[COLUMNS].copy()
 
-    # Replace NaN
-    df = df.fillna("")
+    # --------------------------------------------------------
+    # Convert EVERYTHING to string
+    # --------------------------------------------------------
 
-    # Force all fields to text
-    for column in COLUMNS:
-
-        df[column] = (
-            df[column]
-            .astype(str)
-        )
+    df = force_string_columns(
+        df,
+        COLUMNS
+    )
 
     return df
 
@@ -811,14 +1258,30 @@ def save_data(df):
 
     df = df.copy()
 
-    df = df.fillna("")
+    # --------------------------------------------------------
+    # Add missing columns
+    # --------------------------------------------------------
 
     for column in COLUMNS:
 
-        df[column] = (
-            df[column]
-            .astype(str)
-        )
+        if column not in df.columns:
+
+            df[column] = ""
+
+    # --------------------------------------------------------
+    # Correct column order
+    # --------------------------------------------------------
+
+    df = df[COLUMNS].copy()
+
+    # --------------------------------------------------------
+    # Force every column to string
+    # --------------------------------------------------------
+
+    df = force_string_columns(
+        df,
+        COLUMNS
+    )
 
     df.to_csv(
         DATA_FILE,
@@ -836,7 +1299,11 @@ def generate_incident_id():
         "%Y%m%d"
     )
 
-    random_part = uuid.uuid4().hex[:6].upper()
+    random_part = (
+        uuid.uuid4()
+        .hex[:6]
+        .upper()
+    )
 
     return (
         f"RI-{date_part}-{random_part}"
@@ -882,13 +1349,13 @@ with st.sidebar:
     )
 
     page = st.radio(
-    "Select module",
-    [
-        "Dashboard",
-        "Create Risk Incident",
-        "Breach & ORE Statistics"
-    ]
-)
+        "Select module",
+        [
+            "Dashboard",
+            "Create Risk Incident",
+            "Breach & ORE Statistics"
+        ]
+    )
 
     st.markdown("---")
 
@@ -945,11 +1412,6 @@ if page == "Create Risk Incident":
         unsafe_allow_html=True
     )
 
-
-    # ========================================================
-    # AUTO GENERATED FIELDS
-    # ========================================================
-
     incident_id = generate_incident_id()
 
     creation_datetime = datetime.now().strftime(
@@ -974,7 +1436,6 @@ if page == "Create Risk Incident":
             disabled=True
         )
 
-
     # ========================================================
     # INCIDENT DETAILS
     # ========================================================
@@ -988,14 +1449,12 @@ if page == "Create Risk Incident":
         unsafe_allow_html=True
     )
 
-
     risk_title = st.text_input(
         "Risk Title *",
         placeholder=(
             "Enter a short title for the risk incident"
         )
     )
-
 
     risk_description = st.text_area(
         "Risk Description *",
@@ -1006,16 +1465,17 @@ if page == "Create Risk Incident":
         height=160
     )
 
-
     col1, col2 = st.columns(2)
 
     with col1:
+
         source = st.selectbox(
             "Source of Register *",
             SOURCE_OPTIONS
         )
 
     with col2:
+
         severity = st.selectbox(
             "Severity *",
             SEVERITY_OPTIONS
@@ -1027,7 +1487,168 @@ if page == "Create Risk Incident":
     )
 
     # ========================================================
-    # AI BREACH ASSESSMENT (SUGGESTION ONLY)
+    # TCC
+    # ========================================================
+
+    if source == "TCC":
+
+        st.markdown(
+            """
+            <div class="section-header">
+                TCC Incident Details
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        tcc_col1, tcc_col2, tcc_col3 = st.columns(3)
+
+        with tcc_col1:
+
+            tcc_system = st.selectbox(
+                "System Affected",
+                [""] + TCC_SYSTEMS
+            )
+
+        with tcc_col2:
+
+            tcc_downtime = st.text_input(
+                "Downtime (Minutes)",
+                placeholder="e.g. 30"
+            )
+
+        with tcc_col3:
+
+            tcc_impact = st.selectbox(
+                "Impact Type",
+                [""] + TCC_IMPACT_TYPES
+            )
+
+    else:
+
+        tcc_system = ""
+        tcc_downtime = ""
+        tcc_impact = ""
+
+    # ========================================================
+    # SAAM
+    # ========================================================
+
+    if source == "SAAM":
+
+        st.markdown(
+            """
+            <div class="section-header">
+                SAAM Incident Details
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        saam_col1, saam_col2, saam_col3 = st.columns(3)
+
+        with saam_col1:
+
+            saam_staff = st.text_input(
+                "Staff Name / ID"
+            )
+
+        with saam_col2:
+
+            saam_department = st.selectbox(
+                "Department",
+                [""] + SAAM_DEPARTMENTS
+            )
+
+        with saam_col3:
+
+            saam_anomaly = st.selectbox(
+                "Anomaly Type",
+                [""] + SAAM_ANOMALY_TYPES
+            )
+
+    else:
+
+        saam_staff = ""
+        saam_department = ""
+        saam_anomaly = ""
+
+    # ========================================================
+    # DLM
+    # ========================================================
+
+    if source == "DLM":
+
+        st.markdown(
+            """
+            <div class="section-header">
+                DLM Incident Details
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        dlm_col1, dlm_col2, dlm_col3 = st.columns(3)
+
+        with dlm_col1:
+
+            dlm_data_type = st.selectbox(
+                "Data Type",
+                [""] + DLM_DATA_TYPES
+            )
+
+        with dlm_col2:
+
+            dlm_channel = st.selectbox(
+                "Destination / Channel",
+                [""] + DLM_CHANNELS
+            )
+
+        with dlm_col3:
+
+            dlm_classification = st.selectbox(
+                "Data Classification",
+                [""] + DLM_CLASSIFICATIONS
+            )
+
+    else:
+
+        dlm_data_type = ""
+        dlm_channel = ""
+        dlm_classification = ""
+
+    # ========================================================
+    # ORE
+    # ========================================================
+
+    if source == "ORE":
+
+        st.markdown(
+            """
+            <div class="section-header">
+                ORE Incident Details
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        ore_process_affected = st.selectbox(
+            "Process Affected",
+            [""] + ORE_PROCESS_OPTIONS
+        )
+
+        st.info(
+            "ORE reportability and ORE PIC assignment will be "
+            "completed from the Dashboard after the incident "
+            "has been created."
+        )
+
+    else:
+
+        ore_process_affected = ""
+
+    # ========================================================
+    # AI BREACH ASSESSMENT
     # ========================================================
 
     st.markdown(
@@ -1040,34 +1661,73 @@ if page == "Create Risk Incident":
     )
 
     st.caption(
-        "Optional: get an AI-generated first pass on whether this "
-        "incident may constitute a breach. This does not save "
-        "anything automatically - review and confirm manually."
+        "Optional: get an AI-generated first pass on whether "
+        "this incident may constitute a breach. The AI result "
+        "is advisory only and must be reviewed by the authorised "
+        "human reviewer."
     )
 
-    if st.button("Get AI Suggestion", key="ai_suggest_create"):
+    if st.button(
+        "Get AI Suggestion",
+        key="ai_suggest_create"
+    ):
 
-        if not risk_title.strip() or not risk_description.strip():
-            st.warning("Enter a Risk Title and Description first.")
-        else:
-            with st.spinner("Analyzing incident..."):
-                ai_result = get_ai_breach_assessment(
-                    risk_title, risk_description, source, severity
-                )
+        if (
+            not clean_value(risk_title)
+            or not clean_value(risk_description)
+        ):
 
-            st.markdown(
-                f"""
-                <div class="breach-pic-box">
-                    <strong>Suggested Potential Breach:</strong> {ai_result['suggested_potential_breach']}
-                    &nbsp;|&nbsp; <strong>Confidence:</strong> {ai_result['confidence']}<br><br>
-                    <strong>Reasoning:</strong> {ai_result['reasoning']}<br><br>
-                    <strong>Possible relevant policies:</strong><br>
-                    {ai_result['suggested_policies'] or 'None suggested'}
-                </div>
-                """,
-                unsafe_allow_html=True
+            st.warning(
+                "Enter a Risk Title and Description first."
             )
 
+        else:
+
+            with st.spinner(
+                "Analyzing incident..."
+            ):
+
+                ai_result = get_ai_breach_assessment(
+                    risk_title,
+                    risk_description,
+                    source,
+                    severity
+                )
+
+            st.session_state[
+                "ai_breach_result"
+            ] = ai_result
+
+    if st.session_state[
+        "ai_breach_result"
+    ]:
+
+        ai_result = st.session_state[
+            "ai_breach_result"
+        ]
+
+        st.markdown(
+            f"""
+            <div class="breach-pic-box">
+                <strong>Suggested Potential Breach:</strong>
+                {ai_result['suggested_potential_breach']}
+                &nbsp;|&nbsp;
+                <strong>Confidence:</strong>
+                {ai_result['confidence']}
+                <br><br>
+
+                <strong>Reasoning:</strong>
+                {ai_result['reasoning']}
+                <br><br>
+
+                <strong>Possible relevant policies:</strong>
+                <br>
+                {ai_result['suggested_policies']
+                    or 'None suggested'}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     # ========================================================
     # ATTACHMENTS
@@ -1082,7 +1742,6 @@ if page == "Create Risk Incident":
         unsafe_allow_html=True
     )
 
-
     uploaded_files = st.file_uploader(
         "Upload supporting documents",
         type=[
@@ -1095,11 +1754,6 @@ if page == "Create Risk Incident":
         accept_multiple_files=True
     )
 
-
-    # ========================================================
-    # CREATE BUTTON
-    # ========================================================
-
     st.markdown("---")
 
     if st.button(
@@ -1107,27 +1761,19 @@ if page == "Create Risk Incident":
         use_container_width=True
     ):
 
-        # ----------------------------------------------------
-        # VALIDATION
-        # ----------------------------------------------------
-
-        if not risk_title.strip():
+        if not clean_value(risk_title):
 
             st.error(
                 "Please enter the Risk Title."
             )
 
-        elif not risk_description.strip():
+        elif not clean_value(risk_description):
 
             st.error(
                 "Please enter the Risk Description."
             )
 
         else:
-
-            # ------------------------------------------------
-            # SAVE ATTACHMENTS
-            # ------------------------------------------------
 
             attachment_names = []
 
@@ -1141,8 +1787,8 @@ if page == "Create Risk Incident":
                     )
 
                     filepath = (
-                        ATTACHMENT_FOLDER /
-                        filename
+                        ATTACHMENT_FOLDER
+                        / filename
                     )
 
                     with open(
@@ -1158,34 +1804,66 @@ if page == "Create Risk Incident":
                         filename
                     )
 
-
-            # ------------------------------------------------
-            # CREATE INCIDENT
-            # ------------------------------------------------
-
             new_incident = {
 
                 "Risk Incident ID":
                     incident_id,
 
                 "Risk Title":
-                    risk_title.strip(),
+                    clean_value(risk_title),
 
                 "Risk Description":
-                    risk_description.strip(),
+                    clean_value(risk_description),
 
                 "Source of Register":
-                    source,
+                    clean_value(source),
 
                 "Severity":
-                    severity,
+                    clean_value(severity),
 
                 "Financial Impact":
-                    financial_impact,
+                    clean_value(financial_impact),
 
                 "Date & Time of Creation":
                     creation_datetime,
 
+                # TCC
+                "TCC_System_Affected":
+                    clean_value(tcc_system),
+
+                "TCC_Downtime_Minutes":
+                    clean_value(tcc_downtime),
+
+                "TCC_Impact_Type":
+                    clean_value(tcc_impact),
+
+                # SAAM
+                "SAAM_Staff_Name":
+                    clean_value(saam_staff),
+
+                "SAAM_Department":
+                    clean_value(saam_department),
+
+                "SAAM_Anomaly_Type":
+                    clean_value(saam_anomaly),
+
+                # DLM
+                "DLM_Data_Type":
+                    clean_value(dlm_data_type),
+
+                "DLM_Destination_Channel":
+                    clean_value(dlm_channel),
+
+                "DLM_Data_Classification":
+                    clean_value(dlm_classification),
+
+                # ORE
+                "ORE_Process_Affected":
+                    clean_value(
+                        ore_process_affected
+                    ),
+
+                # Assessment
                 "Status":
                     "Open",
 
@@ -1198,6 +1876,7 @@ if page == "Create Risk Incident":
                 "Policies / Regulations Breached":
                     "",
 
+                # ORE assessment
                 "ORE Reportability":
                     "",
 
@@ -1207,16 +1886,12 @@ if page == "Create Risk Incident":
                 "ORE Case ID":
                     "",
 
+                # Attachments
                 "Attachments":
                     "; ".join(
                         attachment_names
                     )
             }
-
-
-            # ------------------------------------------------
-            # ADD TO DATAFRAME
-            # ------------------------------------------------
 
             new_row = pd.DataFrame(
                 [new_incident],
@@ -1231,19 +1906,17 @@ if page == "Create Risk Incident":
                 ignore_index=True
             )
 
-
-            # ------------------------------------------------
-            # SAVE
-            # ------------------------------------------------
-
             save_data(df)
 
+            # Reset AI result
+            st.session_state[
+                "ai_breach_result"
+            ] = None
 
             st.success(
                 f"Risk Incident {incident_id} "
                 "has been successfully created."
             )
-
 
             if attachment_names:
 
@@ -1252,16 +1925,14 @@ if page == "Create Risk Incident":
                     "attachment(s) saved successfully."
                 )
 
+            st.rerun()
+
 
 # ============================================================
 # DASHBOARD
 # ============================================================
 
 elif page == "Dashboard":
-
-    # ========================================================
-    # DASHBOARD HEADER
-    # ========================================================
 
     st.markdown(
         """
@@ -1272,50 +1943,43 @@ elif page == "Dashboard":
         unsafe_allow_html=True
     )
 
-
     # ========================================================
-    # KPI CALCULATIONS
+    # METRICS
     # ========================================================
 
     total_incidents = len(df)
 
-
     open_incidents = len(
         df[
             df["Status"]
+            .astype(str)
             .str.strip()
             .str.lower()
             == "open"
         ]
     )
 
-
     potential_breaches = len(
         df[
             df["Potential Breach"]
+            .astype(str)
             .str.strip()
             .str.lower()
             == "yes"
         ]
     )
-
 
     reportable_ore = len(
         df[
             df["ORE Reportability"]
+            .astype(str)
             .str.strip()
             .str.lower()
             == "yes"
         ]
     )
 
-
-    # ========================================================
-    # KPI CARDS
-    # ========================================================
-
     col1, col2, col3, col4 = st.columns(4)
-
 
     with col1:
 
@@ -1333,7 +1997,6 @@ elif page == "Dashboard":
             unsafe_allow_html=True
         )
 
-
     with col2:
 
         st.markdown(
@@ -1349,7 +2012,6 @@ elif page == "Dashboard":
             """,
             unsafe_allow_html=True
         )
-
 
     with col3:
 
@@ -1367,7 +2029,6 @@ elif page == "Dashboard":
             unsafe_allow_html=True
         )
 
-
     with col4:
 
         st.markdown(
@@ -1384,9 +2045,8 @@ elif page == "Dashboard":
             unsafe_allow_html=True
         )
 
-
     # ========================================================
-    # SOURCE / SEVERITY SUMMARY
+    # CHARTS
     # ========================================================
 
     if len(df) > 0:
@@ -1395,24 +2055,17 @@ elif page == "Dashboard":
 
         chart_col1, chart_col2 = st.columns(2)
 
-
         with chart_col1:
 
             st.subheader(
                 "Incidents by Source"
             )
 
-            source_counts = (
+            st.bar_chart(
                 df[
                     "Source of Register"
-                ]
-                .value_counts()
+                ].value_counts()
             )
-
-            st.bar_chart(
-                source_counts
-            )
-
 
         with chart_col2:
 
@@ -1420,17 +2073,11 @@ elif page == "Dashboard":
                 "Incidents by Severity"
             )
 
-            severity_counts = (
+            st.bar_chart(
                 df[
                     "Severity"
-                ]
-                .value_counts()
+                ].value_counts()
             )
-
-            st.bar_chart(
-                severity_counts
-            )
-
 
     # ========================================================
     # FILTERS
@@ -1442,11 +2089,7 @@ elif page == "Dashboard":
         "### 🔎 Filter Risk Incidents"
     )
 
-
-    filter1, filter2, filter3, filter4 = (
-        st.columns(4)
-    )
-
+    filter1, filter2, filter3, filter4 = st.columns(4)
 
     with filter1:
 
@@ -1455,7 +2098,6 @@ elif page == "Dashboard":
             SOURCE_OPTIONS
         )
 
-
     with filter2:
 
         severity_filter = st.multiselect(
@@ -1463,14 +2105,12 @@ elif page == "Dashboard":
             SEVERITY_OPTIONS
         )
 
-
     with filter3:
 
         financial_filter = st.multiselect(
             "Financial Impact",
             FINANCIAL_OPTIONS
         )
-
 
     with filter4:
 
@@ -1483,9 +2123,7 @@ elif page == "Dashboard":
             ]
         )
 
-
     filter5, filter6 = st.columns(2)
-
 
     with filter5:
 
@@ -1498,7 +2136,6 @@ elif page == "Dashboard":
             ]
         )
 
-
     with filter6:
 
         search = st.text_input(
@@ -1509,13 +2146,7 @@ elif page == "Dashboard":
             )
         )
 
-
-    # ========================================================
-    # APPLY FILTERS
-    # ========================================================
-
     filtered_df = df.copy()
-
 
     if source_filter:
 
@@ -1525,7 +2156,6 @@ elif page == "Dashboard":
             ].isin(source_filter)
         ]
 
-
     if severity_filter:
 
         filtered_df = filtered_df[
@@ -1533,7 +2163,6 @@ elif page == "Dashboard":
                 "Severity"
             ].isin(severity_filter)
         ]
-
 
     if financial_filter:
 
@@ -1543,13 +2172,13 @@ elif page == "Dashboard":
             ].isin(financial_filter)
         ]
 
-
     if breach_filter:
 
         temp = (
             filtered_df[
                 "Potential Breach"
             ]
+            .map(clean_value)
             .replace(
                 "",
                 "Not Assessed"
@@ -1560,13 +2189,13 @@ elif page == "Dashboard":
             temp.isin(breach_filter)
         ]
 
-
     if ore_filter:
 
         temp = (
             filtered_df[
                 "ORE Reportability"
             ]
+            .map(clean_value)
             .replace(
                 "",
                 "Not Assessed"
@@ -1577,12 +2206,10 @@ elif page == "Dashboard":
             temp.isin(ore_filter)
         ]
 
-
-    if search.strip():
+    if clean_value(search):
 
         search_value = (
-            search
-            .strip()
+            clean_value(search)
             .lower()
         )
 
@@ -1603,7 +2230,6 @@ elif page == "Dashboard":
             search_mask
         ]
 
-
     # ========================================================
     # RECENT INCIDENTS
     # ========================================================
@@ -1619,55 +2245,37 @@ elif page == "Dashboard":
         unsafe_allow_html=True
     )
 
-
     st.markdown(
         """
         <div class="edit-note">
-
         <strong>Editable fields:</strong>
-
         Status, Potential Breach, Breach PIC,
-        ORE Reportability, ORE PIC and ORE Case ID.
-
+        Policies / Regulations Breached, ORE Reportability,
+        ORE PIC and ORE Case ID.
         <br><br>
 
         <strong>Locked fields:</strong>
-
-        Incident ID, Risk Title, Risk Description,
-        Source, Severity, Financial Impact,
-        Creation Date/Time and Attachments.
-
+        Incident ID, Risk Title, Risk Description, Source,
+        Severity, Financial Impact, Creation Date/Time and
+        Attachments.
         <br><br>
 
-        <strong>Potential Breach:</strong>
-
-        Select <strong>Yes</strong> if the incident may
-        constitute a breach. A Breach PIC can then be
-        assigned and an email draft will automatically
-        be prepared below.
-
+        <strong>ORE workflow:</strong>
+        Set ORE Reportability to <strong>Yes</strong>,
+        select an ORE PIC, then use the generated email
+        draft to request ORE case creation in eGRC.
         </div>
         """,
         unsafe_allow_html=True
     )
 
-
-    # ========================================================
-    # PREPARE TABLE
-    # ========================================================
-
     if len(filtered_df) == 0:
 
         st.info(
-            "No risk incidents match "
-            "the selected filters."
+            "No risk incidents match the selected filters."
         )
 
     else:
-
-        # ----------------------------------------------------
-        # Latest 10 incidents
-        # ----------------------------------------------------
 
         recent_df = (
             filtered_df
@@ -1676,26 +2284,26 @@ elif page == "Dashboard":
             .copy()
         )
 
+        # ----------------------------------------------------
+        # VERY IMPORTANT:
+        # Force all database fields to string
+        # ----------------------------------------------------
+
+        recent_df = force_string_columns(
+            recent_df,
+            COLUMNS
+        )
+
+        recent_df = recent_df[
+            COLUMNS
+        ].copy()
 
         # ----------------------------------------------------
-        # Ensure text datatype
+        # SOURCE SPECIFIC COLUMNS HIDDEN FROM TABLE
         # ----------------------------------------------------
-
-        recent_df = recent_df.fillna("")
-
-        for column in COLUMNS:
-
-            recent_df[column] = (
-                recent_df[column]
-                .astype(str)
-            )
-
-
-        # ====================================================
-        # SLIM TABLE FOR EDITOR (hide source-specific fields)
-        # ====================================================
 
         SOURCE_SPECIFIC_COLUMNS = [
+
             "TCC_System_Affected",
             "TCC_Downtime_Minutes",
             "TCC_Impact_Type",
@@ -1708,47 +2316,147 @@ elif page == "Dashboard":
             "DLM_Destination_Channel",
             "DLM_Data_Classification",
 
-            "ORE_Process_Affected",
-            "ORE_Root_Cause_Category",
-            "ORE_Business_Unit"
+            "ORE_Process_Affected"
         ]
-        editor_display_df = recent_df.drop(
-            columns=SOURCE_SPECIFIC_COLUMNS
-        ).reset_index(drop=True)
 
-        editor_display_df.insert(0, "🔍 View", False)
+        editor_display_df = (
+            recent_df
+            .drop(
+                columns=SOURCE_SPECIFIC_COLUMNS,
+                errors="ignore"
+            )
+            .reset_index(drop=True)
+        )
 
         # ----------------------------------------------------
-        # RE-APPLY ANY UNSAVED EDITS FROM BEFORE THE RESET
+        # VIEW CHECKBOX
+        # ----------------------------------------------------
+
+        editor_display_df.insert(
+            0,
+            "🔍 View",
+            False
+        )
+
+        # ----------------------------------------------------
+        # EDITABLE COLUMNS
         # ----------------------------------------------------
 
         EDITABLE_COLS = [
-            "Status", "Potential Breach", "Breach PIC",
+            "Status",
+            "Potential Breach",
+            "Breach PIC",
             "Policies / Regulations Breached",
-            "ORE Reportability", "ORE PIC", "ORE Case ID"
+            "ORE Reportability",
+            "ORE PIC",
+            "ORE Case ID"
         ]
 
-        if st.session_state["preserved_edits"]:
+        # ----------------------------------------------------
+        # FORCE EDITABLE COLUMNS TO STRING
+        #
+        # THIS IS THE IMPORTANT FIX FOR:
+        #
+        # StreamlitAPIException:
+        # configured column type text/selectbox is not
+        # compatible with underlying FLOAT data type
+        # ----------------------------------------------------
 
-            preserved_lookup = {
-                row["Risk Incident ID"]: row
-                for row in st.session_state["preserved_edits"]
-            }
+        for column in EDITABLE_COLS:
+
+            if column in editor_display_df.columns:
+
+                editor_display_df[column] = (
+                    editor_display_df[column]
+                    .map(clean_value)
+                    .astype("object")
+                )
+
+        # ----------------------------------------------------
+        # REAPPLY UNSAVED EDITS
+        # ----------------------------------------------------
+
+        if st.session_state[
+            "preserved_edits"
+        ]:
+
+            preserved_lookup = {}
+
+            for row in st.session_state[
+                "preserved_edits"
+            ]:
+
+                row_id = clean_value(
+                    row.get(
+                        "Risk Incident ID",
+                        ""
+                    )
+                )
+
+                if row_id:
+
+                    preserved_lookup[
+                        row_id
+                    ] = row
 
             for i, row in editor_display_df.iterrows():
 
-                incident_id = row["Risk Incident ID"]
+                current_id = clean_value(
+                    row.get(
+                        "Risk Incident ID",
+                        ""
+                    )
+                )
 
-                if incident_id in preserved_lookup:
+                if current_id in preserved_lookup:
 
-                    for col in EDITABLE_COLS:
-                        editor_display_df.at[i, col] = preserved_lookup[incident_id][col]
+                    preserved_row = (
+                        preserved_lookup[
+                            current_id
+                        ]
+                    )
 
-                    # NOTE: "🔍 View" intentionally NOT restored — stays False
+                    for column in EDITABLE_COLS:
 
+                        if column in editor_display_df.columns:
+
+                            editor_display_df.at[
+                                i,
+                                column
+                            ] = clean_value(
+                                preserved_row.get(
+                                    column,
+                                    ""
+                                )
+                            )
+
+                    editor_display_df.at[
+                        i,
+                        "🔍 View"
+                    ] = False
+
+        # ----------------------------------------------------
+        # FINAL STRING SAFETY CHECK
+        # ----------------------------------------------------
+
+        editor_display_df = force_string_columns(
+            editor_display_df,
+            [
+                column
+                for column in EDITABLE_COLS
+                if column in editor_display_df.columns
+            ]
+        )
+
+        # Restore checkbox to bool
+        editor_display_df[
+            "🔍 View"
+        ] = editor_display_df[
+            "🔍 View"
+        ].astype(bool)
 
         # ====================================================
-        # EDITABLE DATA EDITOR
+        # DATA EDITOR
         # ====================================================
 
         edited_df = st.data_editor(
@@ -1756,10 +2464,17 @@ elif page == "Dashboard":
             editor_display_df,
 
             use_container_width=True,
+
             hide_index=True,
+
             num_rows="fixed",
+
             height=500,
-            key=f"risk_incident_editor_{st.session_state['view_table_reset']}",
+
+            key=(
+                "risk_incident_editor_"
+                f"{st.session_state['view_table_reset']}"
+            ),
 
             disabled=[
                 "Risk Incident ID",
@@ -1769,22 +2484,21 @@ elif page == "Dashboard":
                 "Severity",
                 "Financial Impact",
                 "Date & Time of Creation",
-                "Policies / Regulations Breached",
                 "Attachments"
             ],
+
             column_config={
 
                 "🔍 View":
                     st.column_config.CheckboxColumn(
                         "🔍 View",
-                        help="Tick to view source-specific details",
+                        help=(
+                            "Tick to view incident "
+                            "details"
+                        ),
                         default=False,
                         width="small"
                     ),
-
-                # --------------------------------------------
-                # LOCKED FIELDS
-                # --------------------------------------------
 
                 "Risk Incident ID":
                     st.column_config.TextColumn(
@@ -1838,7 +2552,7 @@ elif page == "Dashboard":
                 "Policies / Regulations Breached":
                     st.column_config.TextColumn(
                         "Policies / Regulations Breached",
-                        disabled=True,
+                        disabled=False,
                         width="large"
                     ),
 
@@ -1849,11 +2563,6 @@ elif page == "Dashboard":
                         width="medium"
                     ),
 
-
-                # --------------------------------------------
-                # STATUS
-                # --------------------------------------------
-
                 "Status":
                     st.column_config.SelectboxColumn(
                         "Status",
@@ -1861,11 +2570,6 @@ elif page == "Dashboard":
                         required=True,
                         width="medium"
                     ),
-
-
-                # --------------------------------------------
-                # POTENTIAL BREACH
-                # --------------------------------------------
 
                 "Potential Breach":
                     st.column_config.SelectboxColumn(
@@ -1879,11 +2583,6 @@ elif page == "Dashboard":
                         width="medium"
                     ),
 
-
-                # --------------------------------------------
-                # BREACH PIC
-                # --------------------------------------------
-
                 "Breach PIC":
                     st.column_config.SelectboxColumn(
                         "Breach PIC",
@@ -1893,11 +2592,6 @@ elif page == "Dashboard":
                         required=False,
                         width="large"
                     ),
-
-
-                # --------------------------------------------
-                # ORE REPORTABILITY
-                # --------------------------------------------
 
                 "ORE Reportability":
                     st.column_config.SelectboxColumn(
@@ -1911,22 +2605,15 @@ elif page == "Dashboard":
                         width="medium"
                     ),
 
-
-                # --------------------------------------------
-                # ORE PIC
-                # --------------------------------------------
-
                 "ORE PIC":
-                    st.column_config.TextColumn(
+                    st.column_config.SelectboxColumn(
                         "ORE PIC",
-                        disabled=False,
-                        width="medium"
+                        options=[
+                            ""
+                        ] + ORE_PIC_OPTIONS,
+                        required=False,
+                        width="large"
                     ),
-
-
-                # --------------------------------------------
-                # ORE CASE ID
-                # --------------------------------------------
 
                 "ORE Case ID":
                     st.column_config.TextColumn(
@@ -1938,31 +2625,64 @@ elif page == "Dashboard":
         )
 
         # ----------------------------------------------------
-        # ALWAYS SAVE THE LATEST STATE, IN CASE OF A RESET
+        # FORCE OUTPUT STRING TYPES
         # ----------------------------------------------------
 
-        st.session_state["preserved_edits"] = edited_df.to_dict("records")
-        
+        edited_df = edited_df.copy()
 
-      # ====================================================
-        # TRIGGER POPUP FOR CHECKED ROW
+        for column in EDITABLE_COLS:
+
+            if column in edited_df.columns:
+
+                edited_df[column] = (
+                    edited_df[column]
+                    .map(clean_value)
+                    .astype("object")
+                )
+
+        # ----------------------------------------------------
+        # PRESERVE CURRENT EDITS
+        # ----------------------------------------------------
+
+        st.session_state[
+            "preserved_edits"
+        ] = edited_df.to_dict(
+            "records"
+        )
+
+        # ====================================================
+        # VIEW INCIDENT POPUP
         # ====================================================
 
-        checked_rows = edited_df[edited_df["🔍 View"] == True]
+        checked_rows = edited_df[
+            edited_df["🔍 View"] == True
+        ]
 
         if len(checked_rows) > 0:
 
-            # Only pop up for the first checked row per rerun
-            selected_incident_id = checked_rows.iloc[0]["Risk Incident ID"]
+            selected_incident_id = clean_value(
+                checked_rows.iloc[0][
+                    "Risk Incident ID"
+                ]
+            )
 
-            detail_row = recent_df[
-                recent_df["Risk Incident ID"] == selected_incident_id
-            ].iloc[0]
+            matching_details = recent_df[
+                recent_df[
+                    "Risk Incident ID"
+                ]
+                .astype(str)
+                .str.strip()
+                == selected_incident_id
+            ]
 
-            show_incident_details(detail_row)
+            if len(matching_details) > 0:
+
+                show_incident_details(
+                    matching_details.iloc[0]
+                )
 
         # ====================================================
-        # BREACH PIC ASSIGNMENT
+        # POTENTIAL BREACH WORKFLOW
         # ====================================================
 
         yes_breach_df = edited_df[
@@ -1975,10 +2695,8 @@ elif page == "Dashboard":
             == "yes"
         ].copy()
 
-
         breach_pic_selections = {}
         policy_selections = {}
-
 
         if len(yes_breach_df) > 0:
 
@@ -1993,102 +2711,82 @@ elif page == "Dashboard":
                 unsafe_allow_html=True
             )
 
-
             st.markdown(
                 """
                 <div class="breach-pic-box">
-
-                <strong>
-                    Potential breach incidents detected.
-                </strong>
-
+                <strong>Potential breach incidents detected.</strong>
                 <br><br>
-
-                Please select the appropriate Breach PIC
-                for each potential breach incident.
-
+                Please select the appropriate Breach PIC for each
+                potential breach incident.
                 <br><br>
-
-                After selecting the Breach PIC, an email draft
-                will automatically be prepared using the
-                information recorded in the Risk Incident Register.
-
+                The breach assessment email draft can then be
+                prepared for the assigned Breach PIC.
                 </div>
                 """,
                 unsafe_allow_html=True
             )
 
-
-            # =================================================
-            # EACH POTENTIAL BREACH INCIDENT
-            # =================================================
-
             for _, breach_row in yes_breach_df.iterrows():
 
-                incident_id = str(
+                incident_id = clean_value(
                     breach_row[
                         "Risk Incident ID"
                     ]
-                ).strip()
+                )
 
-                risk_title = str(
+                risk_title = clean_value(
                     breach_row[
                         "Risk Title"
                     ]
-                ).strip()
+                )
 
-                risk_description = str(
+                risk_description = clean_value(
                     breach_row[
                         "Risk Description"
                     ]
-                ).strip()
+                )
 
-                source = str(
+                source = clean_value(
                     breach_row[
                         "Source of Register"
                     ]
-                ).strip()
+                )
 
-                severity = str(
+                severity = clean_value(
                     breach_row[
                         "Severity"
                     ]
-                ).strip()
+                )
 
-                financial_impact = str(
+                financial_impact = clean_value(
                     breach_row[
                         "Financial Impact"
                     ]
-                ).strip()
+                )
 
-                potential_breach = str(
+                potential_breach = clean_value(
                     breach_row[
                         "Potential Breach"
                     ]
-                ).strip()
+                )
 
-                attachments = str(
+                attachments = clean_value(
                     breach_row[
                         "Attachments"
                     ]
-                ).strip()
+                )
 
-                current_pic = str(
+                current_pic = clean_value(
                     breach_row[
                         "Breach PIC"
                     ]
-                ).strip()
+                )
 
-                current_policy = str(
+                current_policy = clean_value(
                     breach_row[
                         "Policies / Regulations Breached"
                     ]
-                ).strip()
-
-
-                # ------------------------------------------------
-                # INCIDENT INFORMATION
-                # ------------------------------------------------
+                )
 
                 st.markdown(
                     f"""
@@ -2098,9 +2796,8 @@ elif page == "Dashboard":
                     """
                 )
 
-
                 # ------------------------------------------------
-                # BREACH PIC DROPDOWN
+                # BREACH PIC
                 # ------------------------------------------------
 
                 current_display = (
@@ -2108,7 +2805,6 @@ elif page == "Dashboard":
                         current_pic
                     )
                 )
-
 
                 if current_display in BREACH_PIC_OPTIONS:
 
@@ -2122,24 +2818,14 @@ elif page == "Dashboard":
 
                     default_index = 0
 
-
                 selected_display = st.selectbox(
-
                     "Select Breach PIC",
-
                     options=[
                         "— Please select Breach PIC —"
                     ] + BREACH_PIC_OPTIONS,
-
                     index=default_index,
-
                     key=f"breach_pic_{incident_id}"
                 )
-
-
-                # ------------------------------------------------
-                # SELECTED PIC
-                # ------------------------------------------------
 
                 if (
                     selected_display
@@ -2161,12 +2847,9 @@ elif page == "Dashboard":
                     breach_pic_selections[
                         incident_id
                     ] = {
-                        "name":
-                            selected_name,
-                        "email":
-                            selected_email
+                        "name": selected_name,
+                        "email": selected_email
                     }
-
 
                     st.success(
                         f"Assigned Breach PIC: "
@@ -2177,157 +2860,474 @@ elif page == "Dashboard":
                         f"Email: {selected_email}"
                     )
 
-
-                    # =================================================
-                    # POLICY INPUT
-                    # =================================================
+                    # ------------------------------------------------
+                    # POLICY
+                    # ------------------------------------------------
 
                     st.markdown(
                         "#### 📋 Policies / Regulations Breached"
                     )
 
+                    if st.button(
+                        "Suggest policy text",
+                        key=f"ai_policy_{incident_id}"
+                    ):
 
-                    st.caption(
-                        "The assigned Breach PIC can enter the "
-                        "relevant policies, regulations, procedures "
-                        "or clauses that may have been breached."
-                    )
+                        with st.spinner(
+                            "Analyzing..."
+                        ):
 
-                    if st.button("Suggest policy text", key=f"ai_policy_{incident_id}"):
-                        with st.spinner("Analyzing..."):
-                            ai_result = get_ai_breach_assessment(
-                                risk_title, risk_description, source, severity
+                            suggested_policy = (
+                                get_ai_policy_suggestion(
+                                    risk_title,
+                                    risk_description,
+                                    source,
+                                    severity
+                                )
                             )
 
-                        st.write(ai_result)
+                        if suggested_policy:
 
-                        if ai_result["suggested_policies"]:
-                            st.session_state[f"policy_{incident_id}"] = ai_result["suggested_policies"]
+                            st.session_state[
+                                f"policy_{incident_id}"
+                            ] = suggested_policy
+
                             st.rerun()
-                        else:
-                            st.info("No specific policy suggestion available.")
 
+                        else:
+
+                            st.info(
+                                "No specific policy suggestion available."
+                            )
+
+                    policy_default = (
+                        st.session_state.get(
+                            f"policy_{incident_id}",
+                            current_policy
+                        )
+                    )
 
                     policies_breached = st.text_area(
-
                         "Enter applicable policies / regulations",
-
-                        value=current_policy,
-
+                        value=clean_value(
+                            policy_default
+                        ),
                         placeholder=(
                             "Example:\n"
                             "• Information Security Policy – Section 4.2\n"
                             "• Data Protection Procedure – Clause 6.1\n"
                             "• Operational Risk Management Policy – Section 3"
                         ),
-
                         height=130,
-
-                        key=f"policy_{incident_id}"
+                        key=f"policy_input_{incident_id}"
                     )
-
 
                     policy_selections[
                         incident_id
-                    ] = policies_breached
+                    ] = clean_value(
+                        policies_breached
+                    )
 
-
-                    # =================================================
-                    # EMAIL DRAFT
-                    # =================================================
+                    # ------------------------------------------------
+                    # EMAIL
+                    # ------------------------------------------------
 
                     st.markdown("---")
 
                     st.markdown(
                         """
                         <div class="email-draft-box">
-
                         <div class="email-draft-title">
                             📧 Potential Breach Email Draft
                         </div>
-
-                        The draft below has been automatically
-                        generated from the Risk Incident Register.
-                        You can copy it into Gmail when ready.
-
+                        Draft prepared for the assigned Breach PIC.
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
 
-
-                    subject, email_body = (
-                        generate_email_draft(
-
-                            incident_id=
-                                incident_id,
-
-                            risk_title=
-                                risk_title,
-
-                            risk_description=
-                                risk_description,
-
-                            source=
-                                source,
-
-                            severity=
-                                severity,
-
-                            financial_impact=
-                                financial_impact,
-
-                            potential_breach=
-                                potential_breach,
-
-                            breach_pic_name=
-                                selected_name,
-
-                            breach_pic_email=
-                                selected_email,
-
-                            policies_breached=
-                                policies_breached,
-
-                            attachments=
-                                attachments
-                        )
+                    subject = (
+                        "Potential Breach Review Required - "
+                        f"{incident_id} - {risk_title}"
                     )
 
+                    email_body = f"""To: {selected_name} <{selected_email}>
 
-                    # ------------------------------------------------
-                    # EMAIL SUBJECT
-                    # ------------------------------------------------
+Subject: {subject}
+
+Dear {selected_name},
+
+A potential breach has been identified in the Central Risk Incident Register.
+
+Please review the incident details below and assess the applicable policies, regulations, procedures, or requirements that may have been breached.
+
+Risk Incident ID:
+{incident_id}
+
+Risk Title:
+{risk_title}
+
+Risk Description:
+{risk_description}
+
+Source of Register:
+{source}
+
+Severity:
+{severity}
+
+Financial Impact:
+{financial_impact}
+
+Potential Breach:
+{potential_breach}
+
+Breach PIC:
+{selected_name}
+
+Policies / Regulations:
+{policies_breached or "To be assessed"}
+
+Attachments:
+{attachments or "No attachments recorded"}
+
+Please provide your assessment and advise on any further action required.
+
+Thank you.
+
+Regards,
+Central Risk Incident Register
+"""
 
                     st.text_input(
                         "Email Subject",
                         value=subject,
-                        key=f"email_subject_{incident_id}"
+                        key=(
+                            f"breach_email_subject_"
+                            f"{incident_id}"
+                        )
                     )
-
-
-                    # ------------------------------------------------
-                    # EMAIL BODY
-                    # ------------------------------------------------
 
                     st.text_area(
                         "Email Draft",
                         value=email_body,
-                        height=600,
-                        key=f"email_body_{incident_id}"
+                        height=500,
+                        key=(
+                            f"breach_email_body_"
+                            f"{incident_id}"
+                        )
                     )
 
+                else:
 
-                    # ------------------------------------------------
-                    # ATTACHMENT SUMMARY
-                    # ------------------------------------------------
+                    st.warning(
+                        "Please select a Breach PIC to "
+                        "generate the email draft."
+                    )
+
+                st.markdown("---")
+
+        # ====================================================
+        # ORE WORKFLOW
+        # ====================================================
+
+        ore_yes_df = edited_df[
+            edited_df[
+                "ORE Reportability"
+            ]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            == "yes"
+        ].copy()
+
+        ore_pic_selections = {}
+
+        if len(ore_yes_df) > 0:
+
+            st.markdown("---")
+
+            st.markdown(
+                """
+                <div class="section-header">
+                    🟠 ORE — ORE PIC Assignment & eGRC Case Creation
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                """
+                <div class="breach-pic-box">
+                <strong>Reportable ORE incidents detected.</strong>
+                <br><br>
+                Please assign an ORE PIC from the approved ORE PIC
+                directory.
+                <br><br>
+                Once an ORE PIC is selected, the system automatically
+                drafts an email containing the incident information
+                and requests the ORE PIC to create the ORE case in
+                the bank's eGRC system.
+                <br><br>
+                The ORE Case ID can be entered after the ORE PIC
+                creates the case in eGRC.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            for _, ore_row in ore_yes_df.iterrows():
+
+                incident_id = clean_value(
+                    ore_row[
+                        "Risk Incident ID"
+                    ]
+                )
+
+                risk_title = clean_value(
+                    ore_row[
+                        "Risk Title"
+                    ]
+                )
+
+                risk_description = clean_value(
+                    ore_row[
+                        "Risk Description"
+                    ]
+                )
+
+                source = clean_value(
+                    ore_row[
+                        "Source of Register"
+                    ]
+                )
+
+                severity = clean_value(
+                    ore_row[
+                        "Severity"
+                    ]
+                )
+
+                financial_impact = clean_value(
+                    ore_row[
+                        "Financial Impact"
+                    ]
+                )
+
+                potential_breach = clean_value(
+                    ore_row[
+                        "Potential Breach"
+                    ]
+                )
+
+                attachments = clean_value(
+                    ore_row[
+                        "Attachments"
+                    ]
+                )
+
+                ore_process_affected = clean_value(
+                    ore_row.get(
+                        "ORE_Process_Affected",
+                        ""
+                    )
+                )
+
+                current_ore_pic = clean_value(
+                    ore_row[
+                        "ORE PIC"
+                    ]
+                )
+
+                current_ore_display = (
+                    get_ore_pic_display(
+                        current_ore_pic
+                    )
+                )
+
+                if (
+                    current_ore_display
+                    in ORE_PIC_OPTIONS
+                ):
+
+                    ore_default_index = (
+                        ORE_PIC_OPTIONS.index(
+                            current_ore_display
+                        ) + 1
+                    )
+
+                else:
+
+                    ore_default_index = 0
+
+                st.markdown(
+                    f"""
+                    ### ORE Incident: `{incident_id}`
+
+                    **Risk Title:** {risk_title}
+                    """
+                )
+
+                if ore_process_affected:
+
+                    st.caption(
+                        "Process Affected: "
+                        f"{ore_process_affected}"
+                    )
+
+                selected_ore_display = st.selectbox(
+                    "Select ORE PIC",
+                    options=[
+                        "— Please select ORE PIC —"
+                    ] + ORE_PIC_OPTIONS,
+                    index=ore_default_index,
+                    key=f"ore_pic_{incident_id}"
+                )
+
+                if (
+                    selected_ore_display
+                    != "— Please select ORE PIC —"
+                ):
+
+                    selected_ore_name = (
+                        get_ore_pic_name(
+                            selected_ore_display
+                        )
+                    )
+
+                    selected_ore_email = (
+                        get_ore_pic_email(
+                            selected_ore_name
+                        )
+                    )
+
+                    ore_pic_selections[
+                        incident_id
+                    ] = {
+                        "name": selected_ore_name,
+                        "email": selected_ore_email
+                    }
+
+                    st.success(
+                        f"Assigned ORE PIC: "
+                        f"{selected_ore_name}"
+                    )
+
+                    st.caption(
+                        f"ORE PIC Email: "
+                        f"{selected_ore_email}"
+                    )
+
+                    # --------------------------------------------
+                    # AUTO-GENERATE ORE EMAIL
+                    # --------------------------------------------
+
+                    (
+                        ore_subject,
+                        ore_email_body
+                    ) = generate_ore_email_draft(
+
+                        incident_id=incident_id,
+
+                        risk_title=risk_title,
+
+                        risk_description=risk_description,
+
+                        source=source,
+
+                        severity=severity,
+
+                        financial_impact=financial_impact,
+
+                        potential_breach=potential_breach,
+
+                        ore_process_affected=(
+                            ore_process_affected
+                        ),
+
+                        attachments=attachments,
+
+                        ore_pic_name=(
+                            selected_ore_name
+                        ),
+
+                        ore_pic_email=(
+                            selected_ore_email
+                        )
+                    )
+
+                    st.session_state[
+                        "ore_email_drafts"
+                    ][
+                        incident_id
+                    ] = {
+                        "subject":
+                            ore_subject,
+
+                        "body":
+                            ore_email_body
+                    }
+
+                    st.markdown(
+                        """
+                        <div class="email-draft-box">
+                        <div class="email-draft-title">
+                            📧 ORE Email Draft
+                        </div>
+                        Draft prepared for the assigned ORE PIC.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    st.text_input(
+                        "ORE Email To",
+                        value=(
+                            f"{selected_ore_name} "
+                            f"<{selected_ore_email}>"
+                        ),
+                        disabled=True,
+                        key=(
+                            f"ore_email_to_"
+                            f"{incident_id}"
+                        )
+                    )
+
+                    st.text_input(
+                        "ORE Email Subject",
+                        value=ore_subject,
+                        key=(
+                            f"ore_email_subject_"
+                            f"{incident_id}"
+                        )
+                    )
+
+                    st.text_area(
+                        "Email Draft",
+                        value=ore_email_body,
+                        height=500,
+                        key=(
+                            f"ore_email_body_"
+                            f"{incident_id}"
+                        )
+                    )
 
                     if attachments:
 
                         st.info(
-                            "📎 Attachments recorded in the "
-                            "Risk Incident Register: "
-                            f"{attachments}"
+                            "📎 Attachments recorded "
+                            "in the register:\n\n"
+                            +
+                            "\n".join(
+                                f"• {item.strip()}"
+                                for item
+                                in attachments.split(";")
+                                if item.strip()
+                            )
+                            +
+                            "\n\n"
+                            "Attach these files to the email "
+                            "when sending."
                         )
 
                     else:
@@ -2337,17 +3337,28 @@ elif page == "Dashboard":
                             "for this incident."
                         )
 
+                    st.markdown(
+                        """
+                        <div class="info-box">
+                        <strong>Next step:</strong>
+                        Copy the generated email into the bank's
+                        approved email client, attach the listed
+                        supporting documents, and send it to the
+                        ORE PIC. The ORE PIC should then create
+                        the corresponding ORE case in eGRC.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
                 else:
 
                     st.warning(
-                        "Please select a Breach PIC to "
-                        "generate the email draft."
+                        "Please select an ORE PIC to generate "
+                        "the ORE eGRC case creation email."
                     )
 
-
                 st.markdown("---")
-
 
         # ====================================================
         # SAVE ASSESSMENT CHANGES
@@ -2360,30 +3371,13 @@ elif page == "Dashboard":
             use_container_width=True
         ):
 
-            editable_columns = [
-
-                "Status",
-                "Potential Breach",
-                "Breach PIC",
-                "Policies / Regulations Breached",
-                "ORE Reportability",
-                "ORE PIC",
-                "ORE Case ID"
-            ]
-
-
-            # =================================================
-            # UPDATE MASTER DATA
-            # =================================================
-
             for _, edited_row in edited_df.iterrows():
 
-                incident_id = str(
+                incident_id = clean_value(
                     edited_row[
                         "Risk Incident ID"
                     ]
-                ).strip()
-
+                )
 
                 matching_rows = df.index[
                     df[
@@ -2394,158 +3388,230 @@ elif page == "Dashboard":
                     == incident_id
                 ]
 
-
                 if len(matching_rows) == 0:
-
                     continue
-
 
                 original_index = (
                     matching_rows[0]
                 )
 
+                # ----------------------------------------------
+                # STATUS
+                # ----------------------------------------------
 
-                # ---------------------------------------------
-                # NORMAL EDITABLE FIELDS
-                # ---------------------------------------------
+                df.loc[
+                    original_index,
+                    "Status"
+                ] = clean_value(
+                    edited_row[
+                        "Status"
+                    ]
+                )
 
-                for column in editable_columns:
+                # ----------------------------------------------
+                # POTENTIAL BREACH
+                # ----------------------------------------------
 
-                    # -----------------------------------------
-                    # BREACH PIC
-                    # -----------------------------------------
+                potential_breach = clean_value(
+                    edited_row[
+                        "Potential Breach"
+                    ]
+                )
 
-                    if column == "Breach PIC":
+                df.loc[
+                    original_index,
+                    "Potential Breach"
+                ] = potential_breach
 
-                        potential_breach = str(
-                            edited_row[
-                                "Potential Breach"
-                            ]
-                        ).strip().lower()
+                # ----------------------------------------------
+                # BREACH PIC
+                # ----------------------------------------------
 
-
-                        if (
-                            potential_breach
-                            == "yes"
-                            and incident_id
-                            in breach_pic_selections
-                        ):
-
-                            selected_name = (
-                                breach_pic_selections[
-                                    incident_id
-                                ]["name"]
-                            )
-
-                            df.loc[
-                                original_index,
-                                "Breach PIC"
-                            ] = selected_name
-
-
-                        elif (
-                            potential_breach
-                            != "yes"
-                        ):
-
-                            df.loc[
-                                original_index,
-                                "Breach PIC"
-                            ] = ""
-
-
-                        continue
-
-
-                    # -----------------------------------------
-                    # POLICIES / REGULATIONS
-                    # -----------------------------------------
+                if (
+                    potential_breach.lower()
+                    == "yes"
+                ):
 
                     if (
-                        column
-                        == "Policies / Regulations Breached"
+                        incident_id
+                        in breach_pic_selections
                     ):
 
-                        potential_breach = str(
-                            edited_row[
-                                "Potential Breach"
-                            ]
-                        ).strip().lower()
-
-
-                        if (
-                            potential_breach
-                            == "yes"
-                            and incident_id
-                            in policy_selections
-                        ):
-
-                            df.loc[
-                                original_index,
-                                column
-                            ] = policy_selections[
+                        df.loc[
+                            original_index,
+                            "Breach PIC"
+                        ] = clean_value(
+                            breach_pic_selections[
                                 incident_id
-                            ]
+                            ]["name"]
+                        )
 
-                        elif (
-                            potential_breach
-                            != "yes"
-                        ):
+                    else:
 
+                        df.loc[
+                            original_index,
+                            "Breach PIC"
+                        ] = clean_value(
                             df.loc[
                                 original_index,
-                                column
-                            ] = ""
+                                "Breach PIC"
+                            ]
+                        )
 
-
-                        continue
-
-
-                    # -----------------------------------------
-                    # OTHER EDITABLE FIELDS
-                    # -----------------------------------------
-
-                    value = edited_row[column]
-
-
-                    if pd.isna(value):
-
-                        value = ""
-
+                else:
 
                     df.loc[
                         original_index,
-                        column
-                    ] = str(value)
+                        "Breach PIC"
+                    ] = ""
 
+                # ----------------------------------------------
+                # POLICIES
+                # ----------------------------------------------
 
-            # =================================================
-            # FORCE TEXT
-            # =================================================
+                if (
+                    potential_breach.lower()
+                    == "yes"
+                ):
 
-            df = df.fillna("")
+                    if (
+                        incident_id
+                        in policy_selections
+                    ):
 
-            for column in COLUMNS:
+                        df.loc[
+                            original_index,
+                            "Policies / Regulations Breached"
+                        ] = clean_value(
+                            policy_selections[
+                                incident_id
+                            ]
+                        )
 
-                df[column] = (
-                    df[column]
-                    .astype(str)
+                    else:
+
+                        df.loc[
+                            original_index,
+                            "Policies / Regulations Breached"
+                        ] = clean_value(
+                            df.loc[
+                                original_index,
+                                "Policies / Regulations Breached"
+                            ]
+                        )
+
+                else:
+
+                    df.loc[
+                        original_index,
+                        "Policies / Regulations Breached"
+                    ] = ""
+
+                # ----------------------------------------------
+                # ORE REPORTABILITY
+                # ----------------------------------------------
+
+                ore_reportability = clean_value(
+                    edited_row[
+                        "ORE Reportability"
+                    ]
                 )
 
+                df.loc[
+                    original_index,
+                    "ORE Reportability"
+                ] = ore_reportability
+
+                # ----------------------------------------------
+                # ORE PIC
+                # ----------------------------------------------
+
+                if (
+                    ore_reportability.lower()
+                    == "yes"
+                ):
+
+                    if (
+                        incident_id
+                        in ore_pic_selections
+                    ):
+
+                        df.loc[
+                            original_index,
+                            "ORE PIC"
+                        ] = clean_value(
+                            ore_pic_selections[
+                                incident_id
+                            ]["name"]
+                        )
+
+                    else:
+
+                        df.loc[
+                            original_index,
+                            "ORE PIC"
+                        ] = clean_value(
+                            df.loc[
+                                original_index,
+                                "ORE PIC"
+                            ]
+                        )
+
+                else:
+
+                    df.loc[
+                        original_index,
+                        "ORE PIC"
+                    ] = ""
+
+                    # ------------------------------------------
+                    # Clear ORE case if no longer reportable
+                    # ------------------------------------------
+
+                    df.loc[
+                        original_index,
+                        "ORE Case ID"
+                    ] = ""
 
             # =================================================
-            # SAVE CSV
+            # SAVE ORE CASE ID SEPARATELY
             # =================================================
+
+                if (
+                    ore_reportability.lower()
+                    == "yes"
+                ):
+
+                    df.loc[
+                        original_index,
+                        "ORE Case ID"
+                    ] = clean_value(
+                        edited_row[
+                            "ORE Case ID"
+                        ]
+                    )
+
+            # =================================================
+            # NORMALIZE BEFORE SAVE
+            # =================================================
+
+            df = force_string_columns(
+                df,
+                COLUMNS
+            )
 
             save_data(df)
 
+            st.session_state[
+                "preserved_edits"
+            ] = None
 
             st.success(
                 "Assessment changes saved successfully."
             )
 
-
             st.rerun()
+
 
 # ============================================================
 # BREACH & ORE STATISTICS
@@ -2564,89 +3630,169 @@ elif page == "Breach & ORE Statistics":
 
     if len(df) == 0:
 
-        st.info("No risk incidents recorded yet.")
+        st.info(
+            "No risk incidents recorded yet."
+        )
 
     else:
 
-        # --------------------------------------------------
-        # PREP: parse creation datetime, flag Yes rows
-        # --------------------------------------------------
-
         stats_df = df.copy()
 
+        # ====================================================
+        # CREATED DATE
+        # ====================================================
+
         stats_df["Created"] = pd.to_datetime(
-            stats_df["Date & Time of Creation"],
+            stats_df[
+                "Date & Time of Creation"
+            ],
             errors="coerce"
         )
 
-        stats_df = stats_df.dropna(subset=["Created"])
+        stats_df = stats_df.dropna(
+            subset=[
+                "Created"
+            ]
+        )
 
-        stats_df["Breach_Yes"] = (
-            stats_df["Potential Breach"]
-            .astype(str).str.strip().str.lower() == "yes"
+        # ====================================================
+        # BREACH
+        # ====================================================
+
+        stats_df[
+            "Breach_Yes"
+        ] = (
+            stats_df[
+                "Potential Breach"
+            ]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            == "yes"
         ).astype(int)
 
-        stats_df["ORE_Yes"] = (
-            stats_df["ORE Reportability"]
-            .astype(str).str.strip().str.lower() == "yes"
+        # ====================================================
+        # ORE
+        # ====================================================
+
+        stats_df[
+            "ORE_Yes"
+        ] = (
+            stats_df[
+                "ORE Reportability"
+            ]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            == "yes"
         ).astype(int)
 
-        # --------------------------------------------------
-        # PERIOD SELECTOR
-        # --------------------------------------------------
+        # ====================================================
+        # PERIOD
+        # ====================================================
 
         period = st.radio(
             "View by",
-            ["Day", "Week", "Month", "Year"],
+            [
+                "Day",
+                "Week",
+                "Month",
+                "Year"
+            ],
             horizontal=True
         )
 
         if period == "Day":
-            stats_df["Period"] = stats_df["Created"].dt.date
+
+            stats_df[
+                "Period"
+            ] = stats_df[
+                "Created"
+            ].dt.date
 
         elif period == "Week":
-            stats_df["Period"] = (
-                stats_df["Created"].dt.to_period("W").apply(lambda p: p.start_time.date())
+
+            stats_df[
+                "Period"
+            ] = (
+                stats_df[
+                    "Created"
+                ]
+                .dt.to_period("W")
+                .apply(
+                    lambda p:
+                        p.start_time.date()
+                )
             )
 
         elif period == "Month":
-            stats_df["Period"] = (
-                stats_df["Created"].dt.to_period("M").astype(str)
+
+            stats_df[
+                "Period"
+            ] = (
+                stats_df[
+                    "Created"
+                ]
+                .dt.to_period("M")
+                .astype(str)
             )
 
-        else:  # Year
-            stats_df["Period"] = (
-                stats_df["Created"].dt.to_period("Y").astype(str)
+        else:
+
+            stats_df[
+                "Period"
+            ] = (
+                stats_df[
+                    "Created"
+                ]
+                .dt.to_period("Y")
+                .astype(str)
             )
 
-        # --------------------------------------------------
-        # AGGREGATE
-        # --------------------------------------------------
+        # ====================================================
+        # SUMMARY
+        # ====================================================
 
         summary = (
             stats_df
-            .groupby("Period")[["Breach_Yes", "ORE_Yes"]]
+            .groupby("Period")[
+                [
+                    "Breach_Yes",
+                    "ORE_Yes"
+                ]
+            ]
             .sum()
-            .rename(columns={
-                "Breach_Yes": "Potential Breach = Yes",
-                "ORE_Yes": "ORE Reportability = Yes"
-            })
+            .rename(
+                columns={
+                    "Breach_Yes":
+                        "Potential Breach = Yes",
+
+                    "ORE_Yes":
+                        "ORE Reportability = Yes"
+                }
+            )
             .sort_index()
         )
 
-        # --------------------------------------------------
-        # KPI TOTALS (for the currently selected period range)
-        # --------------------------------------------------
+        # ====================================================
+        # METRICS
+        # ====================================================
 
         col1, col2 = st.columns(2)
 
         with col1:
+
             st.markdown(
                 f"""
                 <div class="metric-card">
                     <div class="metric-value">
-                        {int(summary["Potential Breach = Yes"].sum())}
+                        {int(
+                            summary[
+                                "Potential Breach = Yes"
+                            ].sum()
+                        )}
                     </div>
+
                     <div class="metric-label">
                         Total Potential Breaches
                     </div>
@@ -2656,47 +3802,49 @@ elif page == "Breach & ORE Statistics":
             )
 
         with col2:
+
             st.markdown(
                 f"""
                 <div class="metric-card">
                     <div class="metric-value">
-                        {int(summary["ORE Reportability = Yes"].sum())}
+                        {int(
+                            summary[
+                                "ORE Reportability = Yes"
+                            ].sum()
+                        )}
                     </div>
+
                     <div class="metric-label">
                         Total Reportable ORE
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True
-            )    
-
-            page = st.radio(
-                "Select module",
-                [
-                    "Dashboard",
-                    "Create Risk Incident",
-                    "Breach & ORE Statistics"
-                ]
             )
+
+        # ====================================================
+        # TREND
+        # ====================================================
 
         st.markdown("---")
 
-        # --------------------------------------------------
-        # CHART
-        # --------------------------------------------------
+        st.subheader(
+            f"Trend by {period}"
+        )
 
-        st.subheader(f"Trend by {period}")
+        st.bar_chart(
+            summary
+        )
 
-        st.bar_chart(summary)
+        # ====================================================
+        # DETAILED BREAKDOWN
+        # ====================================================
 
-        # --------------------------------------------------
-        # TABLE
-        # --------------------------------------------------
-
-        st.subheader("Detailed Breakdown")
+        st.subheader(
+            "Detailed Breakdown"
+        )
 
         st.dataframe(
             summary,
             use_container_width=True
         )
-
