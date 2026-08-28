@@ -5,17 +5,13 @@ from datetime import datetime
 import uuid
 from google import genai
 import os
-from dotenv import load_dotenv
-from email_sender import send_email, is_email_configured
-
+from email_sender import send_email, is_email_configured, get_setting
 
 # ============================================================
 # GEMINI CONFIGURATION
 # ============================================================
 
-load_dotenv()
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = get_setting("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
     client = genai.Client(api_key=GEMINI_API_KEY)

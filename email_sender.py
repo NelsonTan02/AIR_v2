@@ -1,13 +1,19 @@
 import os
-from dotenv import load_dotenv
 import smtplib
 from email.message import EmailMessage
+import streamlit as st
+
+def get_setting(key: str) -> str:
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, "")
 
 
-load_dotenv()
-
-GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+GMAIL_ADDRESS = get_setting("GMAIL_ADDRESS")
+GMAIL_APP_PASSWORD = get_setting("GMAIL_APP_PASSWORD")
  
  
 def is_email_configured() -> bool:
