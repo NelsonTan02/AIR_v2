@@ -2668,52 +2668,49 @@ elif page == "Dashboard":
                                 f"{incident_id} - {risk_title}"
                             )
 
-                            email_body = f"""To: {selected_name} <{selected_email}>
+                            email_body = f"""
+    Dear {selected_name},
+    
+    A potential breach has been identified in the Central Risk Incident Register.
 
-Subject: {subject}
+    Please review the incident details below and assess the applicable policies, regulations, procedures, or requirements that may have been breached.
 
-Dear {selected_name},
+    Risk Incident ID:
+    {incident_id}
 
-A potential breach has been identified in the Central Risk Incident Register.
+    Risk Title:
+    {risk_title}
 
-Please review the incident details below and assess the applicable policies, regulations, procedures, or requirements that may have been breached.
+    Risk Description:
+    {risk_description}
 
-Risk Incident ID:
-{incident_id}
+    Source of Register:
+    {source}
 
-Risk Title:
-{risk_title}
+    Severity:
+    {severity}
 
-Risk Description:
-{risk_description}
+    Financial Impact:
+    {financial_impact}
 
-Source of Register:
-{source}
+    Potential Breach:
+    {potential_breach}
 
-Severity:
-{severity}
+    Breach PIC:
+    {selected_name}
 
-Financial Impact:
-{financial_impact}
+    Policies / Regulations:
+    {policies_breached or "To be assessed"}
 
-Potential Breach:
-{potential_breach}
+    Attachments:
+    {attachments or "No attachments recorded"}
 
-Breach PIC:
-{selected_name}
+    Please provide your assessment and advise on any further action required.
 
-Policies / Regulations:
-{policies_breached or "To be assessed"}
+    Thank you.
 
-Attachments:
-{attachments or "No attachments recorded"}
-
-Please provide your assessment and advise on any further action required.
-
-Thank you.
-
-Regards,
-Central Risk Incident Register
+    Regards,
+    Central Risk Incident Register
 """
 
                             st.text_input(
@@ -2735,6 +2732,43 @@ Central Risk Incident Register
                                 )
                             )
 
+                            # ------------------------------------------------
+                            # SEND EMAIL
+                            # ------------------------------------------------
+
+                            if is_email_configured():
+
+                                if st.button(
+                                    "📤 Send this email",
+                                    key=f"send_breach_{incident_id}"
+                                ):
+
+                                    try:
+
+                                        send_email(
+                                            to_address=selected_email,
+                                            subject=subject,
+                                            body=email_body
+                                        )
+
+                                        st.success(
+                                            f"Email sent to {selected_email}"
+                                        )
+
+                                    except RuntimeError as e:
+
+                                        st.error(str(e))
+
+                            else:
+
+                                st.caption(
+                                    "Email sending not configured — add "
+                                    "GMAIL_ADDRESS and GMAIL_APP_PASSWORD "
+                                    "to .env to enable sending."
+                                )
+
+
+        
                         else:
 
                             st.info(
