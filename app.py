@@ -6,6 +6,7 @@ import uuid
 from google import genai
 import os
 from dotenv import load_dotenv
+from email_sender import send_email, is_email_configured
 
 
 # ============================================================
@@ -274,7 +275,9 @@ BREACH_PIC_DIRECTORY = {
     "Benjamin Lim": "benjamin.lim@example.com",
     "Carol Wong": "carol.wong@example.com",
     "Daniel Lee": "daniel.lee@example.com",
-    "Emily Ng": "emily.ng@example.com"
+    "Emily Ng": "emily.ng@example.com",
+    "Nelson Tan": "nelsontanzuxuan@gmail.com",
+    "Emily Tan": "emilychai1725@gmail.com"
 }
 
 
@@ -3018,6 +3021,41 @@ Central Risk Incident Register
                         )
                     )
 
+                    # ------------------------------------------------
+                    # SEND EMAIL
+                    # ------------------------------------------------
+
+                    if is_email_configured():
+
+                        if st.button(
+                            "📤 Send this email",
+                            key=f"send_breach_{incident_id}"
+                        ):
+
+                            try:
+
+                                send_email(
+                                    to_address=selected_email,
+                                    subject=subject,
+                                    body=email_body
+                                )
+
+                                st.success(
+                                    f"Email sent to {selected_email}"
+                                )
+
+                            except RuntimeError as e:
+
+                                st.error(str(e))
+
+                    else:
+
+                        st.caption(
+                            "Email sending not configured — add "
+                            "GMAIL_ADDRESS and GMAIL_APP_PASSWORD "
+                            "to .env to enable sending."
+                        )
+
                 else:
 
                     st.warning(
@@ -3311,6 +3349,41 @@ Central Risk Incident Register
                             f"{incident_id}"
                         )
                     )
+
+                    # ------------------------------------------------
+                    # SEND EMAIL
+                    # ------------------------------------------------
+
+                    if is_email_configured():
+
+                        if st.button(
+                            "📤 Send this email",
+                            key=f"send_ore_{incident_id}"
+                        ):
+
+                            try:
+
+                                send_email(
+                                    to_address=selected_ore_email,
+                                    subject=ore_subject,
+                                    body=ore_email_body
+                                )
+
+                                st.success(
+                                    f"Email sent to {selected_ore_email}"
+                                )
+
+                            except RuntimeError as e:
+
+                                st.error(str(e))
+
+                    else:
+
+                        st.caption(
+                            "Email sending not configured — add "
+                            "GMAIL_ADDRESS and GMAIL_APP_PASSWORD "
+                            "to .env to enable sending."
+                        )
 
                     if attachments:
 
