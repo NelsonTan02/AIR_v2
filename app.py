@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-from pathlib import Path
 from datetime import datetime
 import uuid
 from google import genai
 import os
 from email_sender import send_email, is_email_configured, get_setting
+from constants import *
 
 # ============================================================
 # GEMINI CONFIGURATION
@@ -18,18 +18,18 @@ if GEMINI_API_KEY:
 else:
     client = None
 
-
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
+st.logo(OCBC_LOGO, size="large")
+
 st.set_page_config(
     page_title="Central Risk Incident Register",
-    page_icon="🔴",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
 
 # ============================================================
 # SESSION STATE
@@ -46,197 +46,41 @@ if "ore_email_drafts" not in st.session_state:
 
 
 # ============================================================
-# OCBC COLOURS
+# BREACH & ORE PIC DIRECTORY
 # ============================================================
 
-OCBC_RED = "#E31837"
-OCBC_DARK_RED = "#B5122B"
-OCBC_LIGHT_RED = "#FDECEF"
+breach_pic_df = pd.read_csv(
+    BREACH_PIC_FILE,
+    dtype=str,
+    keep_default_na=False
+)
 
-WHITE = "#FFFFFF"
-LIGHT_GREY = "#F5F5F5"
-DARK_GREY = "#333333"
-BLUE = "#0755A5"
+ore_pic_df = pd.read_csv(
+    ORE_PIC_FILE,
+    dtype=str,
+    keep_default_na=False
+)
 
+breach_dict = breach_pic_df.set_index('Breach PIC Name')['Email'].to_dict()
 
-# ============================================================
-# FILE LOCATIONS
-# ============================================================
+ORE_dict = ore_pic_df.set_index('ORE PIC Name')['Email'].to_dict()
 
-DATA_FOLDER = Path("data")
-ATTACHMENT_FOLDER = Path("attachments")
+BREACH_PIC_DIRECTORY = breach_dict
 
-DATA_FOLDER.mkdir(exist_ok=True)
-ATTACHMENT_FOLDER.mkdir(exist_ok=True)
-
-DATA_FILE = DATA_FOLDER / "risk_incident_register.csv"
-
-
-# ============================================================
-# DATABASE COLUMNS
-# ============================================================
-
-COLUMNS = [
-    "Risk Incident ID",
-    "Risk Title",
-    "Risk Description",
-    "Source of Register",
-    "Severity",
-    "Financial Impact",
-    "Date & Time of Creation",
-
-    "TCC_System_Affected",
-    "TCC_Downtime_Minutes",
-    "TCC_Impact_Type",
-
-    "SAAM_Staff_Name",
-    "SAAM_Department",
-    "SAAM_Anomaly_Type",
-
-    "DLM_Data_Type",
-    "DLM_Destination_Channel",
-    "DLM_Data_Classification",
-
-    "Status",
-    "Potential Breach",
-    "Breach PIC",
-    "Policies / Regulations Breached",
-
-    "ORE Reportability",
-    "ORE PIC",
-    "ORE Case ID",
-
-    "Attachments"
-]
-
-
-# ============================================================
-# DROPDOWN OPTIONS
-# ============================================================
-
-SOURCE_OPTIONS = ["TCC", "SAAM", "DLM", "ORE"]
-
-SEVERITY_OPTIONS = ["Low", "Medium", "High"]
-
-FINANCIAL_OPTIONS = ["Low", "Medium", "High"]
-
-STATUS_OPTIONS = [
-    "Open",
-    "Under Investigation",
-    "Pending Review",
-    "Closed"
-]
-
-YES_NO_OPTIONS = ["Yes", "No"]
-
-
-# ============================================================
-# TCC OPTIONS
-# ============================================================
-
-TCC_SYSTEMS = [
-    "Core Banking System",
-    "Internet Banking",
-    "Mobile App",
-    "Payment Gateway",
-    "Internal Email"
-]
-
-TCC_IMPACT_TYPES = [
-    "Full Outage",
-    "Degraded Performance",
-    "Intermittent Failure"
-]
-
-
-# ============================================================
-# SAAM OPTIONS
-# ============================================================
-
-SAAM_DEPARTMENTS = [
-    "Retail Banking",
-    "Treasury",
-    "Operations",
-    "IT",
-    "Compliance"
-]
-
-SAAM_ANOMALY_TYPES = [
-    "Unusual Login Time",
-    "Excessive Access Attempts",
-    "Privileged Access Misuse",
-    "Unusual Transaction Pattern"
-]
-
-
-# ============================================================
-# DLM OPTIONS
-# ============================================================
-
-DLM_DATA_TYPES = [
-    "Customer PII",
-    "Account Numbers",
-    "Internal Financial Data",
-    "Credentials",
-    "Confidential Documents"
-]
-
-DLM_CHANNELS = [
-    "Email (External)",
-    "USB Storage",
-    "Cloud Upload",
-    "Printing",
-    "Messaging App"
-]
-
-DLM_CLASSIFICATIONS = [
-    "Confidential",
-    "Restricted",
-    "Internal Use Only"
-]
-
-
-# ============================================================
-# BREACH PIC DIRECTORY
-# ============================================================
-
-BREACH_PIC_DIRECTORY = {
-    "Alice Tan": "alice.tan@example.com",
-    "Benjamin Lim": "benjamin.lim@example.com",
-    "Carol Wong": "carol.wong@example.com",
-    "Daniel Lee": "daniel.lee@example.com",
-    "Emily Ng": "emily.ng@example.com",
-    "Nelson Tan": "nelsontanzuxuan@gmail.com",
-    "Emily Tan": "emilychai1725@gmail.com"
-}
-
-
-# ============================================================
-# ORE PIC DIRECTORY
-# ============================================================
-
-ORE_PIC_DIRECTORY = {
-    "Farah Ahmad": "farah.ahmad@example.com",
-    "George Lim": "george.lim@example.com",
-    "Hannah Wong": "hannah.wong@example.com",
-    "Ivan Tan": "ivan.tan@example.com",
-    "Jennifer Lee": "jennifer.lee@example.com"
-}
-
+ORE_PIC_DIRECTORY = ORE_dict
 
 # Values stored in the CSV/dashboard are the PIC names only.
 # Keep the email-inclusive labels separate for the assignment widgets.
 BREACH_PIC_OPTIONS = list(BREACH_PIC_DIRECTORY.keys())
+ORE_PIC_OPTIONS = list(ORE_PIC_DIRECTORY.keys())
 
 BREACH_PIC_DISPLAY_OPTIONS = [
-    f"{name} — {email}"
+    f"{name} - {email}"
     for name, email in BREACH_PIC_DIRECTORY.items()
 ]
 
-ORE_PIC_OPTIONS = list(ORE_PIC_DIRECTORY.keys())
-
 ORE_PIC_DISPLAY_OPTIONS = [
-    f"{name} — {email}"
+    f"{name} - {email}"
     for name, email in ORE_PIC_DIRECTORY.items()
 ]
 
@@ -272,7 +116,7 @@ def get_breach_pic_display(name):
         return ""
 
     if name in BREACH_PIC_DIRECTORY:
-        return f"{name} — {BREACH_PIC_DIRECTORY[name]}"
+        return f"{name} - {BREACH_PIC_DIRECTORY[name]}"
 
     return name
 
@@ -284,8 +128,8 @@ def get_breach_pic_name(display_value):
     if not display_value:
         return ""
 
-    if " — " in display_value:
-        return display_value.split(" — ", 1)[0].strip()
+    if " - " in display_value:
+        return display_value.split(" - ", 1)[0].strip()
 
     if " - " in display_value:
         return display_value.split(" - ", 1)[0].strip()
@@ -309,7 +153,7 @@ def get_ore_pic_display(name):
         return ""
 
     if name in ORE_PIC_DIRECTORY:
-        return f"{name} — {ORE_PIC_DIRECTORY[name]}"
+        return f"{name} - {ORE_PIC_DIRECTORY[name]}"
 
     return name
 
@@ -321,8 +165,8 @@ def get_ore_pic_name(display_value):
     if not display_value:
         return ""
 
-    if " — " in display_value:
-        return display_value.split(" — ", 1)[0].strip()
+    if " - " in display_value:
+        return display_value.split(" - ", 1)[0].strip()
 
     if " - " in display_value:
         return display_value.split(" - ", 1)[0].strip()
@@ -878,7 +722,7 @@ def show_incident_details(detail_row):
         st.markdown("---")
 
         st.caption(
-            f"📎 Attachments: {attachments}"
+            f"Attachments: {attachments}"
         )
 
     st.markdown("---")
@@ -912,9 +756,9 @@ st.markdown(
 
 .main-header {{
     background-color: {OCBC_RED};
-    padding: 22px 30px;
+    padding: 20px 30px;
     border-radius: 8px;
-    margin-bottom: 25px;
+    margin-bottom: 15px;
 }}
 
 .main-header h1 {{
@@ -1150,7 +994,7 @@ st.markdown(
 with st.sidebar:
 
     st.markdown(
-        "## 🔴 Risk Incident Register"
+        "## Risk Incident Register"
     )
 
     st.markdown("---")
@@ -1450,7 +1294,7 @@ if page == "Create Risk Incident":
         "this incident may constitute a breach. Review and "
         "confirm the result manually."
     )
-
+    
     if st.button(
         "Get AI Suggestion",
         key="ai_suggest_create"
@@ -1526,7 +1370,7 @@ if page == "Create Risk Incident":
     st.markdown("---")
 
     if st.button(
-        "➕ Create Risk Incident",
+        "Create Risk Incident",
         use_container_width=True
     ):
 
@@ -1801,7 +1645,7 @@ elif page == "Dashboard":
     st.markdown("---")
 
     st.markdown(
-        "### 🔎 Filter Risk Incidents"
+        "### Filter Risk Incidents"
     )
 
     filter1, filter2, filter3, filter4 = st.columns(4)
@@ -1944,6 +1788,8 @@ elif page == "Dashboard":
 
     st.markdown("---")
 
+    ### Main Dashboard
+
     st.markdown(
         """
         <div class="section-header">
@@ -1981,20 +1827,6 @@ elif page == "Dashboard":
 
         recent_df = recent_df[COLUMNS]
 
-        SOURCE_SPECIFIC_COLUMNS = [
-
-            "TCC_System_Affected",
-            "TCC_Downtime_Minutes",
-            "TCC_Impact_Type",
-
-            "SAAM_Staff_Name",
-            "SAAM_Department",
-            "SAAM_Anomaly_Type",
-
-            "DLM_Data_Type",
-            "DLM_Destination_Channel",
-            "DLM_Data_Classification"
-        ]
 
         editor_display_df = (
             recent_df
@@ -2007,20 +1839,9 @@ elif page == "Dashboard":
 
         editor_display_df.insert(
             0,
-            "🔍 View",
+            "View",
             False
         )
-
-        EDITABLE_COLS = [
-
-            "Status",
-            "Potential Breach",
-            "Breach PIC",
-            "Policies / Regulations Breached",
-            "ORE Reportability",
-            "ORE PIC",
-            "ORE Case ID"
-        ]
 
         # ----------------------------------------------------
         # REAPPLY UNSAVED EDITS
@@ -2073,7 +1894,7 @@ elif page == "Dashboard":
 
                     editor_display_df.at[
                         i,
-                        "🔍 View"
+                        "View"
                     ] = False
 
         edited_df = st.data_editor(
@@ -2104,9 +1925,9 @@ elif page == "Dashboard":
 
             column_config={
 
-                "🔍 View":
+                "View":
                     st.column_config.CheckboxColumn(
-                        "🔍 View",
+                        "View",
                         help=(
                             "Tick to view incident "
                             "source-specific details"
@@ -2253,7 +2074,7 @@ elif page == "Dashboard":
         # ----------------------------------------------------
 
         checked_rows = edited_df[
-            edited_df["🔍 View"] == True
+            edited_df["View"] == True
         ]
 
         if len(checked_rows) > 0:
@@ -2447,7 +2268,7 @@ elif page == "Dashboard":
 
                 with st.expander(
                     (
-                        f"{incident_id} — "
+                        f"{incident_id} - "
                         f"{risk_title} | "
                         f"{flag_text} | "
                         f"Status: "
@@ -2499,7 +2320,7 @@ elif page == "Dashboard":
                     if breach_yes:
 
                         st.markdown(
-                            "### ⚠️ Potential Breach"
+                            "### Potential Breach"
                         )
 
                         st.caption(
@@ -2533,7 +2354,7 @@ elif page == "Dashboard":
                             "Select Breach PIC",
 
                             options=[
-                                "— Please select Breach PIC —"
+                                "- Please select Breach PIC -"
                             ]
                             + BREACH_PIC_DISPLAY_OPTIONS,
 
@@ -2544,7 +2365,7 @@ elif page == "Dashboard":
 
                         if (
                             selected_display
-                            != "— Please select Breach PIC —"
+                            != "- Please select Breach PIC -"
                         ):
 
                             selected_name = (
@@ -2585,11 +2406,11 @@ elif page == "Dashboard":
                             )
 
                         st.markdown(
-                            "#### 📋 Policies / Regulations Breached"
+                            "#### Policies / Regulations Breached"
                         )
 
                         if st.button(
-                            "Suggest policy text",
+                            "Preliminary Breach Assessment Suggestion (AI)",
                             key=f"ai_policy_{incident_id}"
                         ):
 
@@ -2642,9 +2463,9 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
 
                             placeholder=(
                                 "Example:\n"
-                                "• Information Security Policy – Section 4.2\n"
-                                "• Data Protection Procedure – Clause 6.1\n"
-                                "• Operational Risk Management Policy – Section 3"
+                                "- Information Security Policy - Section 4.2\n"
+                                "- Data Protection Procedure - Clause 6.1\n"
+                                "- Operational Risk Management Policy - Section 3"
                             ),
 
                             height=130,
@@ -2659,12 +2480,12 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                         st.markdown("---")
 
                         st.markdown(
-                            "#### 📧 Potential Breach Email Draft"
+                            "#### Potential Breach Email Draft"
                         )
 
                         if (
                             selected_display
-                            != "— Please select Breach PIC —"
+                            != "- Please select Breach PIC -"
                         ):
 
                             subject = (
@@ -2720,20 +2541,14 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             st.text_input(
                                 "Email Subject",
                                 value=subject,
-                                key=(
-                                    f"breach_email_subject_"
-                                    f"{incident_id}"
-                                )
+                                key=f"breach_email_subject_{incident_id}_{selected_name}"   
                             )
 
                             st.text_area(
                                 "Email Draft",
                                 value=email_body,
                                 height=400,
-                                key=(
-                                    f"breach_email_body_"
-                                    f"{incident_id}"
-                                )
+                                key=f"breach_email_body_{incident_id}_{selected_name}"
                             )
 
                             # ------------------------------------------------
@@ -2743,7 +2558,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             if is_email_configured():
 
                                 if st.button(
-                                    "📤 Send this email",
+                                    "Send this email",
                                     key=f"send_breach_{incident_id}"
                                 ):
 
@@ -2766,7 +2581,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             else:
 
                                 st.caption(
-                                    "Email sending not configured — add "
+                                    "Email sending not configured - add "
                                     "GMAIL_ADDRESS and GMAIL_APP_PASSWORD "
                                     "to .env to enable sending."
                                 )
@@ -2790,7 +2605,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             st.markdown("---")
 
                         st.markdown(
-                            "### 🟠 ORE — PIC Assignment & eGRC Case Creation"
+                            "### ORE - PIC Assignment & eGRC Case Creation"
                         )
 
                         st.caption(
@@ -2824,7 +2639,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             "Select ORE PIC",
 
                             options=[
-                                "— Please select ORE PIC —"
+                                "- Please select ORE PIC -"
                             ]
                             + ORE_PIC_DISPLAY_OPTIONS,
 
@@ -2835,7 +2650,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
 
                         if (
                             selected_ore_display
-                            != "— Please select ORE PIC —"
+                            != "- Please select ORE PIC -"
                         ):
 
                             selected_ore_name = (
@@ -2896,7 +2711,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             }
 
                             st.markdown(
-                                "#### 📧 ORE Email Draft"
+                                "#### ORE Email Draft"
                             )
 
                             st.text_input(
@@ -2918,28 +2733,22 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             st.text_input(
                                 "ORE Email Subject",
                                 value=ore_subject,
-                                key=(
-                                    f"ore_email_subject_"
-                                    f"{incident_id}"
-                                )
+                                key=f"ore_email_subject_{incident_id}_{selected_ore_name}"
                             )
 
                             st.text_area(
                                 "Email Draft",
                                 value=ore_email_body,
                                 height=400,
-                                key=(
-                                    f"ore_email_body_"
-                                    f"{incident_id}"
-                                )
-                            )
+                                key=f"ore_email_body_{incident_id}_{selected_ore_name}"
+                            )       
 
                             if attachments:
 
                                 st.info(
-                                    "📎 Attachments recorded in the register:\n\n"
+                                    " Attachments recorded in the register:\n\n"
                                     + "\n".join(
-                                        f"• {item.strip()}"
+                                        f"- {item.strip()}"
                                         for item in attachments.split(";")
                                         if item.strip()
                                     )
@@ -2950,7 +2759,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                             else:
 
                                 st.caption(
-                                    "📎 No attachments were recorded "
+                                    " No attachments were recorded "
                                     "for this incident."
                                 )
 
@@ -2978,7 +2787,7 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
         st.markdown("")
 
         if st.button(
-            "💾 Save Assessment Changes",
+            "Save Assessment Changes",
             use_container_width=True
         ):
 
