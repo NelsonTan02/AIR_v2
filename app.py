@@ -2624,10 +2624,6 @@ Suggested Policies: {suggested_policy['suggested_policies'] or 'None suggested'}
                                     """
                                 )
 
-                                st.write(st.session_state[
-                                        f"policy_{incident_id}"
-                                    ]["suggested"])
-                                
                             else:
 
                                 st.info(
